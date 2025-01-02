@@ -8,7 +8,7 @@ import org.springframework.context.event.EventListener
 
 @Configuration
 internal class EventConfig(
-    private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
+    private val aiArticleProcessingNodesFacade: SimpleAIArticleProcessingFacade,
 ) {
 
     @EventListener(condition = "#event.state == 'CREATED'")

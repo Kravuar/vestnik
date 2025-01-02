@@ -1,6 +1,7 @@
 package net.kravuar.vestnik.source
 
 import com.apptasticsoftware.rssreader.Item
+import net.kravuar.vestnik.destination.Channel
 import java.time.Duration
 import java.util.Optional
 
@@ -10,8 +11,7 @@ interface SourcesFacade {
         var url: Optional<String>,
         var scheduleDelay: Optional<Duration>,
         var contentXPath: Optional<String>,
-        var thumbnailXPath: Optional<String>,
-        var activeMode: Optional<String>,
+        var channels: Optional<MutableSet<Channel>>,
         var suspended: Optional<Boolean>,
     )
     fun fetchLatestNews(sourceName: String, delta: Duration): List<Item>

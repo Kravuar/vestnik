@@ -50,9 +50,8 @@ internal class SimpleSourcesFacade(
             input.name.ifPresent{ this.name = it }
             input.scheduleDelay.ifPresent{ this.scheduleDelay = it }
             input.contentXPath.ifPresent{ this.contentXPath = it }
-            input.thumbnailXPath.ifPresent{ this.thumbnailXPath = it }
-            input.activeMode.ifPresent{ this.activeMode = it }
             input.suspended.ifPresent{ this.suspended = it }
+            input.channels.ifPresent{ this.channels = it }
         }
     }
 
@@ -74,9 +73,8 @@ internal class SimpleSourcesFacade(
                 sourceInput.scheduleDelay.orElse(null),
                 sourceInput.contentXPath.orElse(null),
             ).apply {
-                sourceInput.thumbnailXPath.ifPresent{ this.thumbnailXPath = it }
-                sourceInput.activeMode.ifPresent{ this.activeMode = it }
                 sourceInput.suspended.ifPresent{ this.suspended = it }
+                sourceInput.channels.ifPresent{ this.channels = it }
             }
         }
     }

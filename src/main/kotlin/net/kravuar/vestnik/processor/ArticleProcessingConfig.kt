@@ -11,11 +11,11 @@ import org.springframework.context.annotation.Import
 @Import
 internal class ArticleProcessingConfig {
     @Bean
-    fun aiArticleProcessingNodesFacade(
+    fun aiArticleProcessingFacade(
         sourcesFacade: SourcesFacade,
         entityManager: EntityManager,
         aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
-    ) = AIArticleProcessingNodesFacade(
+    ): AIArticleProcessingFacade = SimpleAIArticleProcessingFacade(
         sourcesFacade,
         entityManager,
         aiArticleProcessingNodesRepository
@@ -24,9 +24,9 @@ internal class ArticleProcessingConfig {
     @Bean
     fun articleProcessor(
         chatModel: ChatModel,
-        aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade
+        aiArticleProcessingFacade: AIArticleProcessingFacade
     ): ArticleProcessor = AIArticleProcessor(
         chatModel,
-        aiArticleProcessingNodesFacade,
+        aiArticleProcessingFacade,
     )
 }

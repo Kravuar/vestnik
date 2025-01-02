@@ -16,7 +16,7 @@ import net.kravuar.vestnik.source.Source
 @Table(indexes = [
     Index(columnList = "source,mode", unique = true),
 ])
-internal class AIArticleProcessingNode(
+class AIArticleProcessingNode(
     @ManyToOne(optional = false)
     @Column(nullable = false, updatable = false)
     var source: Source,

@@ -10,10 +10,10 @@ import org.springframework.ai.chat.prompt.Prompt
 
 internal class AIArticleProcessor(
     private val chatModel: ChatModel,
-    private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
+    private val aiArticleProcessingFacade: AIArticleProcessingFacade,
 ): ArticleProcessor {
     override fun processArticle(article: Article, mode: String): String {
-        return aiArticleProcessingNodesFacade.findRoot(article.source.name, mode).let { rootNode ->
+        return aiArticleProcessingFacade.findRoot(article.source.name, mode).let { rootNode ->
             generateSequence(rootNode) { it.child }
                 .fold(article.content) { currentContent, node ->
                     chatModel.call(

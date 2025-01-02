@@ -4,7 +4,7 @@ import net.kravuar.vestnik.source.Source
 import java.time.Duration
 import java.util.Optional
 
-interface ArticleFacade {
+interface ArticlesFacade {
     data class ArticleInput(
         var source: Optional<Source>,
         val title: Optional<String>,

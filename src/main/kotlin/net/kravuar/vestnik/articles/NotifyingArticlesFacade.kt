@@ -4,28 +4,28 @@ import net.kravuar.vestnik.events.EntityEvent
 import org.springframework.context.ApplicationEventPublisher
 import java.time.Duration
 
-internal class NotifyingArticleFacade(
+internal class NotifyingArticlesFacade(
     private val eventPublisher: ApplicationEventPublisher,
-    private val articleFacade: ArticleFacade,
-) : ArticleFacade {
+    private val articlesFacade: ArticlesFacade,
+) : ArticlesFacade {
     override fun fetchAndStoreLatestNews(delta: Duration): List<Article> {
-        return articleFacade.fetchAndStoreLatestNews(delta).onEach {
+        return articlesFacade.fetchAndStoreLatestNews(delta).onEach {
             eventPublisher.publishEvent(EntityEvent.created(this, it))
         }
     }
 
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
-        return articleFacade.fetchAndStoreLatestNews(sourceName, delta).onEach {
+        return articlesFacade.fetchAndStoreLatestNews(sourceName, delta).onEach {
             eventPublisher.publishEvent(EntityEvent.created(this, it))
         }
     }
 
     override fun getArticle(id: Long): Article {
-        return articleFacade.getArticle(id)
+        return articlesFacade.getArticle(id)
     }
 
-    override fun updateArticle(id: Long, input: ArticleFacade.ArticleInput): Article {
-        return articleFacade.updateArticle(id, input).also {
+    override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
+        return articlesFacade.updateArticle(id, input).also {
             eventPublisher.publishEvent(EntityEvent.updated(this, it))
         }
     }

@@ -12,17 +12,17 @@ internal class ArticlesConfig {
     @Bean
     fun articleScheduler(
         scheduler: TaskScheduler,
-        articleFacade: ArticleFacade,
+        articlesFacade: ArticlesFacade,
     ): ArticleScheduler = ArticleScheduler(
         scheduler,
-        articleFacade,
+        articlesFacade,
     )
 
     @Bean
     fun articleFacade(
         articlesRepository: ArticlesRepository,
         sourcesFacade: SourcesFacade,
-    ): ArticleFacade = SimpleArticleFacade(
+    ): ArticlesFacade = SimpleArticlesFacade(
         articlesRepository,
         sourcesFacade
     )
@@ -31,9 +31,9 @@ internal class ArticlesConfig {
     @Primary
     fun notifyingArticleFacade(
         eventPublisher: ApplicationEventPublisher,
-        articleFacade: ArticleFacade,
-    ): ArticleFacade = NotifyingArticleFacade(
+        articlesFacade: ArticlesFacade,
+    ): ArticlesFacade = NotifyingArticlesFacade(
         eventPublisher,
-        articleFacade
+        articlesFacade
     )
 }

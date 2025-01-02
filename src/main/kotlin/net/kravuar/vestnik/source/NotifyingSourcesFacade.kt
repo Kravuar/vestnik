@@ -11,9 +11,7 @@ internal class NotifyingSourcesFacade(
 ): SourcesFacade {
 
     override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
-        return sourcesFacade.fetchLatestNews(sourceName, delta).onEach {
-            eventPublisher.publishEvent(EntityEvent.created(this, it))
-        }
+        return sourcesFacade.fetchLatestNews(sourceName, delta)
     }
 
     override fun getSources(): List<Source> {

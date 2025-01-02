@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration
 
 @Configuration
 internal class FunctionsConfig(
-    private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
+    private val aiArticleProcessingNodesFacade: SimpleAIArticleProcessingFacade,
 ) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -28,7 +28,7 @@ internal class FunctionsConfig(
     fun createSequence(): FunctionCallMeta<CreateSequenceInput> = FunctionCallMeta(
         "createSequence",
         "Если нужно создать новую цепочку обработки статьи",
-        "Добавление нового узла обработки статьи в цепочку",
+        "Добавляет новую цепочку обработки статьи",
         CreateSequenceInput::class.java,
     ) {
         try {
@@ -41,6 +41,33 @@ internal class FunctionsConfig(
         } catch (e: Exception) {
             return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {
                 put("error", "Ошибка при создании цепочки обработки: " + e.message)
+            }
+        }
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonClassDescription("Данные удаляемой цепочки обработки статьи")
+    data class DeleteSequenceInput(
+        @JsonPropertyDescription("Имя источника статьи")
+        val source: String,
+        @JsonPropertyDescription("Режим обработки статьи")
+        val mode: String
+    )
+    @Bean
+    fun deleteSequence(): FunctionCallMeta<DeleteSequenceInput> = FunctionCallMeta(
+        "deleteSequence",
+        "Если нужно удалить цепочку обработки статьи",
+        "Удаляет цепочку обработки статьи",
+        DeleteSequenceInput::class.java,
+    ) {
+        try {
+            aiArticleProcessingNodesFacade.deleteSequence(it.source, it.mode)
+            return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {
+                put("successfullyDeleted", true)
+            }
+        } catch (e: Exception) {
+            return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {
+                put("error", "Ошибка при удалении цепочки обработки: " + e.message)
             }
         }
     }
@@ -60,7 +87,7 @@ internal class FunctionsConfig(
     fun insertNode(): FunctionCallMeta<InsertNodeInput> = FunctionCallMeta(
         "insertNode",
         "Если нужно добавить новый узел обработки статьи в цепочку",
-        "Добавление нового узла обработки статьи в цепочку",
+        "Добавляет новый узел обработки статьи в цепочку",
         InsertNodeInput::class.java,
     ) {
         try {
@@ -86,7 +113,7 @@ internal class FunctionsConfig(
     fun deleteNode(): FunctionCallMeta<DeleteNodeInput> = FunctionCallMeta(
         "deleteNode",
         "Если нужно удалить узел обработки статьи из цепочки",
-        "Удаление узла обработки статьи из цепочки",
+        "Удаляет узел обработки статьи из цепочки",
         DeleteNodeInput::class.java,
     ) {
         try {
@@ -105,7 +132,7 @@ internal class FunctionsConfig(
     fun getAllSequences(): FunctionCallMeta<Void> = FunctionCallMeta(
         "getAllSequences",
         "Если нужно получить основную информацию о существующих цепочках обработки статьи",
-        "Получение основной информация о всех цепочках обработки статьи",
+        "Получает основную информацию о всех цепочках обработки статьи",
         Void::class.java,
     ) {
        try {
@@ -137,7 +164,7 @@ internal class FunctionsConfig(
     fun getSequence(): FunctionCallMeta<GetSequenceInput> = FunctionCallMeta(
         "getSequence",
         "Если нужно получить информацию о конкретной цепочке обработки статьи",
-        "Получение информация о цепочке обработки статьи",
+        "Получает информацию о конкретной цепочке обработки статьи",
         GetSequenceInput::class.java,
     ) {
         try {
@@ -170,7 +197,7 @@ internal class FunctionsConfig(
     fun getModes(): FunctionCallMeta<GetModesInput> = FunctionCallMeta(
         "getModes",
         "Если нужно получить список режимов для конкретного источника",
-        "Получение списка существующих режимов для конкретного источника",
+        "Получает список существующих режимов для конкретного источника",
         GetModesInput::class.java,
     ) {
         try {
@@ -203,7 +230,7 @@ internal class FunctionsConfig(
     fun updateNode(): FunctionCallMeta<UpdateNodeInput> = FunctionCallMeta(
         "updateNode",
         "Если нужно обновить узел обработки статьи",
-        "Обновление узла обработки статьи",
+        "Обновляет узел обработки статьи",
         UpdateNodeInput::class.java,
     ) {
         try {

@@ -26,6 +26,8 @@ class Article(
     @Column(nullable = false)
     var title: String,
     @Column(nullable = false)
+    var url: String,
+    @Column(nullable = false)
     @Lob
     var content: String,
     @Column(nullable = false)

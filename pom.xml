@@ -20,6 +20,7 @@
 		<spring-ai.version>1.0.0-M4</spring-ai.version>
 		<rssreader.version>3.9.1</rssreader.version>
 		<telegram.version>6.9.7.1</telegram.version>
+		<jsoup.version>1.18.3</jsoup.version>
 	</properties>
 
 	<dependencies>
@@ -47,9 +48,19 @@
 			<version>${telegram.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>org.telegram</groupId>
+			<artifactId>telegrambots-abilities</artifactId>
+			<version>${telegram.version}</version>
+		</dependency>
+		<dependency>
 			<groupId>com.apptasticsoftware</groupId>
 			<artifactId>rssreader</artifactId>
 			<version>${rssreader.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jsoup</groupId>
+			<artifactId>jsoup</artifactId>
+			<version>${jsoup.version}</version>
 		</dependency>
 
 		<dependency>

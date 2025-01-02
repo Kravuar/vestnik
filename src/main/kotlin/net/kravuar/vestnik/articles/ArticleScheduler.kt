@@ -6,7 +6,7 @@ import java.util.concurrent.ScheduledFuture
 
 internal class ArticleScheduler(
     private val scheduler: TaskScheduler,
-    private val articleFacade: ArticleFacade,
+    private val articlesFacade: ArticlesFacade,
 ) {
     private val tasksBySource = mutableMapOf<String, ScheduledFuture<*>>()
 
@@ -19,7 +19,7 @@ internal class ArticleScheduler(
         source.run {
             tasksBySource[name]?.cancel(true)
             tasksBySource[name] = scheduler.scheduleWithFixedDelay({
-                articleFacade.fetchAndStoreLatestNews(name, scheduleDelay)
+                articlesFacade.fetchAndStoreLatestNews(name, scheduleDelay)
             }, scheduleDelay)
         }
     }

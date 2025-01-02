@@ -8,41 +8,37 @@ import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_TEMPERATURE
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
 
-internal class AIArticleProcessingNodesFacade(
+internal class SimpleAIArticleProcessingFacade(
     private val sourcesFacade: SourcesFacade,
     private val entityManager: EntityManager,
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
-) {
-    fun findRoot(source: String, mode: String): AIArticleProcessingNode {
+) : AIArticleProcessingFacade {
+    override fun findRoot(source: String, mode: String): AIArticleProcessingNode {
         return aiArticleProcessingNodesRepository.findBySourceAndModeAndParentIsNull(source, mode);
     }
 
-    data class SequenceInfo(
-        val id: Long,
-        val source: String,
-        val mode: String,
-    )
-    fun getSequences(): List<SequenceInfo> {
+
+    override fun getSequences(): List<AIArticleProcessingFacade.SequenceInfo> {
         return aiArticleProcessingNodesRepository.findAllByParentIsNull()
-            .map { SequenceInfo(it.id!!, it.source.name, it.mode) }
+            .map { AIArticleProcessingFacade.SequenceInfo(it.id!!, it.source.name, it.mode) }
     }
 
-    fun getSequence(source: String, mode: String): List<AIArticleProcessingNode> {
+    override fun getSequence(source: String, mode: String): List<AIArticleProcessingNode> {
         return generateSequence(aiArticleProcessingNodesRepository
             .findBySourceAndModeAndParentIsNull(source, mode)) { it.child }
             .toList()
     }
 
-    fun getModes(source: String): List<String> {
+    override fun getModes(source: String): List<String> {
         return aiArticleProcessingNodesRepository.findAllBySourceAndParentIsNull(source)
             .map { it.mode }
     }
 
     @Transactional
-    fun createSequence(
+    override fun createSequence(
         sourceName: String,
         mode: String
-    ): AIArticleProcessingNode {
+    ): List<AIArticleProcessingNode> {
         val source = sourcesFacade.getSource(sourceName)
         val rootNode = createInitialRootNode(source, mode)
         val formattingNode = createInitialFormattingNode(source, mode)
@@ -52,20 +48,33 @@ internal class AIArticleProcessingNodesFacade(
 
         return aiArticleProcessingNodesRepository.saveAll(
             listOf(rootNode, formattingNode)
-        )[0]
+        )
     }
 
     @Transactional
-    fun insertNode(
+    override fun deleteSequence(
+        sourceName: String,
+        mode: String
+    ): List<AIArticleProcessingNode> {
+        // Find sequence
+        val sequence = getSequence(sourceName, mode)
+
+        // Delete it
+        aiArticleProcessingNodesRepository.deleteAll(sequence)
+
+        // Delete it
+        return sequence
+    }
+
+    @Transactional
+    override fun insertNode(
         prevNodeId: Long,
-        prompt: String,
-        model: String,
-        temperature: Double
+        input: AIArticleProcessingFacade.AIArticleProcessingNodeInput
     ): AIArticleProcessingNode {
         // Find existing
         val previousNode = aiArticleProcessingNodesRepository
             .findById(prevNodeId)
-            .orElseThrow { IllegalStateException("Предшествующий узел с id=${prevNodeId} не найден") }
+            .orElseThrow { IllegalArgumentException("Предшествующий узел с id=${prevNodeId} не найден") }
         val nextNode = previousNode.child
 
         // Lock them
@@ -76,9 +85,9 @@ internal class AIArticleProcessingNodesFacade(
         val newNode = AIArticleProcessingNode(
             previousNode.source,
             previousNode.mode,
-            model,
-            temperature,
-            prompt,
+            input.model.orElse(DEFAULT_MODEL),
+            input.temperature.orElse(DEFAULT_TEMPERATURE),
+            input.prompt.orElseThrow { IllegalArgumentException("Промпт не указан") },
             previousNode,
             nextNode
         )
@@ -96,11 +105,11 @@ internal class AIArticleProcessingNodesFacade(
 
 
     @Transactional
-    fun deleteNode(nodeId: Long): AIArticleProcessingNode {
+    override fun deleteNode(nodeId: Long): AIArticleProcessingNode {
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
-            .orElseThrow { IllegalStateException("Узел с id=${nodeId} не найден") }
+            .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
         val previousNode = existingNode.parent
         val nextNode = existingNode.child
 
@@ -125,19 +134,16 @@ internal class AIArticleProcessingNodesFacade(
     }
 
     @Transactional
-    fun updateNode(nodeId: Long, prompt: String?, model: String?, temperature: Double?): AIArticleProcessingNode {
+    override fun updateNode(nodeId: Long, input: AIArticleProcessingFacade.AIArticleProcessingNodeInput): AIArticleProcessingNode {
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
-            .orElseThrow { IllegalStateException("Узел с id=${nodeId} не найден") }
-
-        // Lock it
-        entityManager.lock(existingNode, LockModeType.PESSIMISTIC_WRITE)
+            .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
 
         // Update
-        prompt?.let { existingNode.prompt = it }
-        model?.let { existingNode.model = it }
-        temperature?.let { existingNode.temperature = it }
+        input.prompt.ifPresent { existingNode.prompt = it }
+        input.model.ifPresent { existingNode.model = it }
+        input.temperature.ifPresent { existingNode.temperature = it }
 
         aiArticleProcessingNodesRepository.save(existingNode)
         return existingNode

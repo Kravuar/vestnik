@@ -6,10 +6,10 @@ import net.kravuar.vestnik.source.SourcesFacade
 import net.kravuar.vestnik.source.Source
 import java.time.Duration
 
-internal class SimpleArticleFacade(
+internal class SimpleArticlesFacade(
     private val articlesRepository: ArticlesRepository,
     private val sourcesFacade: SourcesFacade,
-) : ArticleFacade {
+) : ArticlesFacade {
 
     @Transactional
     override fun fetchAndStoreLatestNews(delta: Duration): List<Article> {
@@ -30,9 +30,8 @@ internal class SimpleArticleFacade(
     }
 
     @Transactional
-    override fun updateArticle(id: Long, input: ArticleFacade.ArticleInput): Article {
+    override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
         return getArticle(id).apply {
-            input.title.ifPresent { title = it }
             input.content.ifPresent { content = it }
             input.status.ifPresent { status = it }
         }
@@ -44,6 +43,7 @@ internal class SimpleArticleFacade(
                 source,
                 item.title.orElseThrow(),
                 item.content.orElseThrow(),
+                item.link.orElseThrow(),
                 Status.NEW
             )
         }
