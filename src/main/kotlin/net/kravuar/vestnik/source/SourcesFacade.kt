@@ -7,12 +7,12 @@ import java.util.Optional
 
 interface SourcesFacade {
     data class SourceInput(
-        var name: Optional<String>,
-        var url: Optional<String>,
-        var scheduleDelay: Optional<Duration>,
-        var contentXPath: Optional<String>,
-        var channels: Optional<MutableSet<Channel>>,
-        var suspended: Optional<Boolean>,
+        var name: Optional<String> = Optional.empty(),
+        var url: Optional<String> = Optional.empty(),
+        var scheduleDelay: Optional<Duration> = Optional.empty(),
+        var contentXPath: Optional<String> = Optional.empty(),
+        var channels: Optional<MutableSet<Channel>> = Optional.empty(),
+        var suspended: Optional<Boolean> = Optional.empty(),
     )
     fun fetchLatestNews(sourceName: String, delta: Duration): List<Item>
     fun getSources(): List<Source>

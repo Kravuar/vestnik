@@ -10,6 +10,8 @@ import jakarta.persistence.Index
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToOne
 import jakarta.persistence.Table
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.source.Source
 
 @Entity
@@ -21,12 +23,16 @@ class AIArticleProcessingNode(
     @Column(nullable = false, updatable = false)
     var source: Source,
     @Column(nullable = false)
+    @NotBlank
     var mode: String,
     @Column(nullable = false)
+    @NotBlank
     var model: String,
     @Column(nullable = false)
+    @Size(min = 0, max = 1)
     var temperature: Double,
     @Column(nullable = false)
+    @NotBlank
     var prompt: String,
     @OneToOne(fetch = FetchType.LAZY)
     var parent: AIArticleProcessingNode? = null,

@@ -20,6 +20,14 @@ internal class NotifyingArticlesFacade(
         }
     }
 
+    override fun getArticles(status: Article.Status?): List<Article> {
+        return articlesFacade.getArticles(status)
+    }
+
+    override fun getArticles(status: Article.Status?, page: Int): Pair<Long, List<Article>> {
+        return articlesFacade.getArticles(status, page)
+    }
+
     override fun getArticle(id: Long): Article {
         return articlesFacade.getArticle(id)
     }

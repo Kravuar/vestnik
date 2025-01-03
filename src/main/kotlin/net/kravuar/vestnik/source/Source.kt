@@ -1,30 +1,32 @@
 package net.kravuar.vestnik.source
 
-import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.ManyToMany
+import jakarta.validation.constraints.NotBlank
 import net.kravuar.vestnik.destination.Channel
 import java.time.Duration
 
 @Entity
 class Source(
     @Column(nullable = false, unique = true)
+    @NotBlank
     var name: String,
     @Column(nullable = false)
+    @NotBlank
     var url: String,
     @Column(nullable = false)
     var scheduleDelay: Duration,
     @Column(nullable = false)
+    @NotBlank
     var contentXPath: String,
-    @ManyToMany(cascade = [
-        CascadeType.PERSIST,
-        CascadeType.MERGE
-    ])
+    @ManyToMany
     var channels: MutableSet<Channel> = HashSet(),
+    @Column(nullable = false)
+    var deleted: Boolean = false,
     @Column
     var suspended: Boolean? = null,
     @Id

@@ -1,6 +1,8 @@
 package net.kravuar.vestnik.assistant
 
+import net.kravuar.vestnik.articles.Article
 import net.kravuar.vestnik.articles.ArticlesFacade
+import net.kravuar.vestnik.commons.Constants
 import net.kravuar.vestnik.destination.ChannelPlatform
 import net.kravuar.vestnik.destination.ChannelsFacade
 import net.kravuar.vestnik.post.PostsFacade
@@ -27,22 +29,14 @@ import java.util.Optional
 import java.util.function.Predicate
 
 private enum class CommandWithInput {
-    ADD_SOURCE {
-        override fun input(): Any = SourcesFacade.SourceInput(
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty()
-        )
-    };
-
-    abstract fun input(): Any
+    ADD_SOURCE,
+    UPDATE_SOURCE,
+    ADD_CHANNEL,
+    ADD_NODE,
+    UPDATE_NODE
 }
 
 private data class CommandInAction(
-    val input: Any,
     val messageId: Int
 )
 
@@ -94,7 +88,8 @@ internal class TelegramAssistantFacade(
                         "Name" to it.name,
                         "URL" to it.url,
                         "Периодичность" to it.scheduleDelay,
-                        "Приостановлен" to it.suspended
+                        "Приостановлен" to it.suspended,
+                        "Удалён" to it.deleted
                     )
                 })
             """Список источников:
@@ -110,7 +105,7 @@ internal class TelegramAssistantFacade(
         "Показать источник",
         { ctx -> sourcesFacade.getSource(ctx.firstArg()) },
         { ctx, source ->
-            val sourceAsString = source.let { it ->
+            val sourceAsString = source.let {
                 writeForMessage(
                     mapOf(
                         "Id" to it.id,
@@ -119,7 +114,8 @@ internal class TelegramAssistantFacade(
                         "Периодичность" to it.scheduleDelay,
                         "XPATH к контенту" to it.contentXPath,
                         "Целевые Каналы" to it.channels.joinToString { channel -> channel.name },
-                        "Приостановлен" to it.suspended
+                        "Приостановлен" to it.suspended,
+                        "Удалён" to it.deleted
                     )
                 )
             }
@@ -128,7 +124,8 @@ internal class TelegramAssistantFacade(
             $sourceAsString
             """
         },
-        { ctx -> "Не удалось найти источник ${ctx.firstArg()}" }
+        { ctx -> "Не удалось найти источник ${ctx.firstArg()}" },
+        input = 1
     )
 
     fun addSource(): Ability = commandWithInputAbility(
@@ -150,7 +147,7 @@ internal class TelegramAssistantFacade(
         }
         """,
         CommandWithInput.ADD_SOURCE,
-        { _, values, input -> sourcesFacade.addSource((input as SourcesFacade.SourceInput).apply {
+        { _, values -> sourcesFacade.addSource(SourcesFacade.SourceInput().apply {
                 values["name"]?.let {
                     name = Optional.of(it)
                 }
@@ -182,35 +179,360 @@ internal class TelegramAssistantFacade(
         { ctx -> sourcesFacade.deleteSource(ctx.firstArg()) },
         { _, source -> "Источник ${source.name} удален" },
         { ctx -> "Не удалось удалить источник ${ctx.firstArg()}" },
+        input = 1
     )
 
-    fun updateSource(): Ability = TODO()
+    fun updateSource(): Ability = commandWithInputAbility(
+        "updateSource",
+        "Обновить источник",
+        """Введите необходимые данные для обновления источника: 
+                    
+        ${
+            writeForMessage(
+                mapOf(
+                    "currentName" to "Имя обновляемого источника (обязательно)",
+                    "newName" to "Имя",
+                    "url" to "URL",
+                    "schedule" to "Периодичность (в минутах)",
+                    "xpath" to "XPATH к контенту",
+                    "channels" to "Целевые каналы (имена через запятую)",
+                    "suspended" to "Приостановлен",
+                )
+            )
+        }
+        """,
+        CommandWithInput.UPDATE_SOURCE,
+        { _, values -> sourcesFacade.updateSource(
+            requireNotNull(values["currentName"]) { "Не указано имя обновляемого источника" },
+            SourcesFacade.SourceInput().apply {
+                values["newName"]?.let {
+                    name = Optional.of(it)
+                }
+                values["url"]?.let {
+                    url = Optional.of(it)
+                }
+                values["schedule"]?.let {
+                    scheduleDelay = Optional.of(Duration.ofMinutes(it.toLong()))
+                }
+                values["xpath"]?.let {
+                    contentXPath = Optional.of(it)
+                }
+                values["channels"]?.let {
+                    channels = Optional.of(it.split(",").map {
+                            name -> channelsFacade.getChannelByName(name.trim())
+                    }.toMutableSet())
+                }
+                values["suspended"]?.toBoolean()?.let {
+                    suspended = Optional.of(it)
+                }
+            }
+        )},
+        { _, source -> "Источник ${source.name} обновлён" },
+        { "Не удалось обновить источник" }
+    )
 
-    fun showChannels(): Ability = TODO()
+    fun showChannels(): Ability = nonInputCommandAbility(
+        "showChannels",
+        "Показать список каналов",
+        { channelsFacade.getAllChannels() },
+        { _, channels ->
+            val channelsAsString = writeForMessage(channels.map {
+                mapOf(
+                    "Id" to it.id,
+                    "Имя" to it.name,
+                    "Платформа" to it.platform,
+                    "Источники" to it.sources.joinToString(", ") { source -> source.name },
+                    "Удалён" to it.deleted,
+                )
+            })
+            """Список каналов:
 
-    fun addChannel(input: ChannelsFacade.ChannelInput): Ability = TODO()
+            $channelsAsString
+            """
+        },
+        { "Не удалось получить каналы" }
+    )
 
-    fun deleteChannel(id: String): Ability = TODO()
+    fun addChannel(): Ability = commandWithInputAbility(
+        "addChanel",
+        "Добавить канал",
+        """Введите следующие данные для добавления канала: 
+                    
+        ${
+            writeForMessage(
+                mapOf(
+                    "id" to "ID канала",
+                    "name" to "Имя канала",
+                    "platform" to "Платформа (${ChannelPlatform.entries.joinToString("/") { it.name }})",
+                    "sources" to "Источники (имена через запятую)",
+                )
+            )
+        }
+        """,
+        CommandWithInput.ADD_CHANNEL,
+        { _, values -> channelsFacade.addChannel(ChannelsFacade.ChannelInput().apply {
+            values["name"]?.let {
+                name = Optional.of(it)
+            }
+            values["id"]?.let {
+                id = Optional.of(it)
+            }
+            values["platform"]?.let {
+                platform = Optional.of(ChannelPlatform.valueOf(it.uppercase()))
+            }
+            values["sources"]?.let {
+                sources = Optional.of(it.split(",").map {
+                        name -> sourcesFacade.getSource(name.trim())
+                }.toMutableSet())
+            }
+        })},
+        { _, channel -> "Канал ${channel.name} добавлен" },
+        { "Не удалось добавить канал" }
+    )
 
-    fun showChains(): Ability = TODO()
+    fun deleteChannel(): Ability = nonInputCommandAbility(
+        "deleteChannel",
+        "Удалить канал по имени",
+        { ctx -> channelsFacade.deleteChannel(ctx.firstArg()) },
+        { _, source -> "Канал ${source.name} удален" },
+        { ctx -> "Не удалось удалить канал ${ctx.firstArg()}" },
+        input = 1
+    )
 
-    fun showModes(sourceName: String): Ability = TODO()
+    fun showChains(): Ability = nonInputCommandAbility(
+        "showChains",
+        "Показать цепочки обработки статей",
+        { aiArticleProcessingFacade.getSequences() },
+        { _, roots ->
+            val chainsAsString = writeForMessage(roots.map {
+                mapOf(
+                    "Id Корня" to it.id,
+                    "Источник" to it.source,
+                    "Режим" to it.mode,
+                )
+            })
+            """Список цепочек:
 
-    fun showChain(sourceName: String, mode: String): Ability = TODO()
+            $chainsAsString
+            """
+        },
+        { "Не удалось получить цепочки" }
+    )
 
-    fun addChain(sourceName: String, mode: String): Ability = TODO()
+    fun showModes(): Ability = nonInputCommandAbility(
+        "showModes",
+        "Показать режимы обработки статей для источника",
+        { ctx -> aiArticleProcessingFacade.getModes(ctx.firstArg()) },
+        { ctx, modes -> "Список режимов для источника ${ctx.firstArg()}: ${modes.joinToString(", ", "[", "]")}" },
+        { ctx -> "Не удалось получить режимы для источника ${ctx.firstArg()}" },
+        input = 1
+    )
 
-    fun deleteChain(sourceName: String, mode: String): Ability = TODO()
+    fun showChain(): Ability = nonInputCommandAbility(
+        "showChain",
+        "Показать конкретную цепочку",
+        { ctx -> aiArticleProcessingFacade.getSequence(ctx.firstArg(), ctx.secondArg()) },
+        { ctx, chain ->
+            val chainAsString = writeForMessage(chain.map {
+                mapOf(
+                    "Id узла" to it.id,
+                    "Модель" to it.model,
+                    "Температура" to it.temperature,
+                    "Промпт" to it.prompt,
+                    "Размер промпта" to it.prompt.length,
+                )
+            })
+            """Цепочка для источника ${ctx.firstArg()}, режима ${ctx.secondArg()} (${chainAsString.length} узлов):
 
-    fun addNode(prevNodeId: Long, input: AIArticleProcessingFacade.AIArticleProcessingNodeInput): Ability = TODO()
+            $chainAsString
+            """
+        },
+        { ctx -> "Не удалось получить цепочку для источника ${ctx.firstArg()}, режима ${ctx.secondArg()}" },
+        input = 2
+    )
 
-    fun deleteNode(nodeId: Long): Ability = TODO()
+    fun addChain(): Ability = nonInputCommandAbility(
+        "addChain",
+        "Добавить цепочку обработки статьи",
+        { ctx -> aiArticleProcessingFacade.createSequence(ctx.firstArg(), ctx.secondArg()) },
+        { ctx, chain ->
+            val chainAsString = writeForMessage(chain.map {
+                mapOf(
+                    "Id узла" to it.id,
+                    "Модель" to it.model,
+                    "Температура" to it.temperature,
+                    "Промпт" to it.prompt,
+                    "Размер промпта" to it.prompt.length,
+                )
+            })
+            """Цепочка для источника ${ctx.firstArg()}, режима ${ctx.secondArg()} создана:
 
-    fun updateNode(nodeId: Long, input: AIArticleProcessingFacade.AIArticleProcessingNodeInput): Ability = TODO()
+            $chainAsString
+            """
+        },
+        { ctx -> "Не удалось создать цепочку для источника ${ctx.firstArg()}, режима ${ctx.secondArg()}" },
+        input = 2
+    )
 
-    fun showArticles(): Ability = TODO()
+    fun deleteChain(): Ability = nonInputCommandAbility(
+        "deleteChain",
+        "Удалить цепочку обработки статьи",
+        { ctx -> aiArticleProcessingFacade.deleteSequence(ctx.firstArg(), ctx.secondArg()) },
+        { ctx, chain ->
+            val chainAsString = writeForMessage(chain.map {
+                mapOf(
+                    "Id узла" to it.id,
+                    "Модель" to it.model,
+                    "Температура" to it.temperature,
+                    "Промпт" to it.prompt,
+                    "Размер промпта" to it.prompt.length,
+                )
+            })
+            """Цепочка для источника ${ctx.firstArg()}, режима ${ctx.secondArg()} удалена:
 
-    fun showArticle(articleId: Long): Ability = TODO()
+            $chainAsString
+            """
+        },
+        { ctx -> "Не удалось удалить цепочку для источника ${ctx.firstArg()}, режима ${ctx.secondArg()}" },
+        input = 2
+    )
+
+    fun addNode(): Ability = commandWithInputAbility(
+        "addNode",
+        "Добавить узел после указанного узла",
+        """Введите следующие данные для добавления узла: 
+                    
+        ${
+            writeForMessage(
+                mapOf(
+                    "prevNodeId" to "ID предыдущего узла (Обязательно)",
+                    "model" to "Модель узла (По умолчанию: - ${Constants.DEFAULT_MODEL})",
+                    "temperature" to "Температура узла (По умолчанию: - ${Constants.DEFAULT_TEMPERATURE})",
+                    "prompt" to "Промпт узла (Обязательно)",
+                )
+            )
+        }
+        """,
+        CommandWithInput.ADD_NODE,
+        { _, values -> aiArticleProcessingFacade.insertNode(
+            requireNotNull(values["prevNodeId"]) { "ID предыдущего узла обязателен" }.toLong(),
+            AIArticleProcessingFacade.AIArticleProcessingNodeInput().apply {
+                values["model"]?.let {
+                    model = Optional.of(it)
+                }
+                values["temperature"]?.let {
+                    temperature = Optional.of(it.toDouble())
+                }
+                values["prompt"]?.let {
+                    prompt = Optional.of(it)
+                }
+            }
+        )},
+        { _, node -> "Узел ${node.id} добавлен в цепочку источника ${node.source.name}, режима ${node.mode}" },
+        { "Не удалось добавить узел" },
+    )
+
+    fun deleteNode(): Ability = nonInputCommandAbility(
+        "deleteNode",
+        "Удалить узел обработки статьи",
+        { ctx -> aiArticleProcessingFacade.deleteNode(ctx.firstArg().toLong()) },
+        { ctx, node ->
+            val nodeAsString = writeForMessage(mapOf(
+                    "Id узла" to node.id,
+                    "Модель" to node.model,
+                    "Температура" to node.temperature,
+                    "Промпт" to node.prompt,
+                    "Размер промпта" to node.prompt.length,
+                ))
+            """Узел из цепочки для источника ${ctx.firstArg()}, режима ${ctx.secondArg()} удален:
+
+            $nodeAsString
+            """
+        },
+        { ctx -> "Не удалось удалить узел с id ${ctx.firstArg()}" },
+        input = 1
+    )
+
+    fun updateNode(): Ability = commandWithInputAbility(
+        "updateNode",
+        "Обновить узел обработки статьи",
+        """Введите следующие данные для обновления узла: 
+                    
+        ${
+            writeForMessage(
+                mapOf(
+                    "nodeId" to "ID узла (Обязательно)",
+                    "model" to "Модель узла",
+                    "temperature" to "Температура узла",
+                    "prompt" to "Промпт узла"
+                )
+            )
+        }
+        """,
+        CommandWithInput.UPDATE_SOURCE,
+        { _, values -> aiArticleProcessingFacade.updateNode(
+            requireNotNull(values["nodeId"]) { "ID узла обязателен" }.toLong(),
+            AIArticleProcessingFacade.AIArticleProcessingNodeInput().apply {
+                values["model"]?.let {
+                    model = Optional.of(it)
+                }
+                values["temperature"]?.let {
+                    temperature = Optional.of(it.toDouble())
+                }
+                values["prompt"]?.let {
+                    prompt = Optional.of(it)
+                }
+            }
+        )},
+        { _, node -> "Узел ${node.id} обновлён в цепочке источника ${node.source.name}, режима ${node.mode}" },
+        { "Не удалось обновить узел" },
+    )
+
+    fun showArticles(): Ability = nonInputCommandAbility(
+        "showArticles",
+        "Показать статьи по статусу (статус, номер страницы)",
+        { ctx -> articlesFacade.getArticles(Article.Status.valueOf(ctx.firstArg().uppercase()), ctx.secondArg().toInt()) },
+        { ctx, articles ->
+            val articlesAsString = writeForMessage(articles.second.map {
+                mapOf(
+                    "Id статьи" to it.id,
+                    "Источник" to it.source.name,
+                    "Заголовок" to it.title,
+                    "URL" to it.url,
+                    "Создана" to it.createdAt.toString(),
+                )
+            })
+            """Страница ${ctx.secondArg()}/${articles.first} статей в статусе ${ctx.firstArg()}:
+
+            $articlesAsString
+            """
+        },
+        { ctx -> "Не удалось удалить узел с id ${ctx.firstArg()}" },
+        input = 2
+    )
+
+    fun showArticle(): Ability = nonInputCommandAbility(
+        "showArticle",
+        "Показать статью по Id",
+        { ctx -> articlesFacade.getArticle(ctx.secondArg().toLong()) },
+        { ctx, article ->
+            val articleAsString = writeForMessage(mapOf(
+                    "Заголовок" to article.title,
+                    "Источник" to article.source.name,
+                    "URL" to article.url,
+                    "Создана" to article.createdAt.toString(),
+                    "Содержание" to article.content,
+                    "Статус" to article.status,
+                )
+            )
+            """Статья c Id ${ctx.firstArg()}:
+
+            $articleAsString
+            """
+        },
+        { ctx -> "Не удалось найти статью с id ${ctx.firstArg()}" },
+        input = 1
+    )
 
     private fun <T> nonInputCommandAbility(
         abilityName: String,
@@ -223,6 +545,7 @@ internal class TelegramAssistantFacade(
         return adminBuilder()
             .name(abilityName)
             .info(abilityInfo)
+            .input(input)
             .action { ctx ->
                 handleNonInputCommand(
                     ctx.update().message.messageId,
@@ -259,7 +582,7 @@ internal class TelegramAssistantFacade(
         abilityInfo: String,
         schemaMessage: String,
         command: CommandWithInput,
-        action: (Update, Map<String, String>, Any) -> T,
+        action: (Update, Map<String, String>) -> T,
         successMessage: (Update, T) -> String,
         errorMessage: (Map<String, String>) -> String
     ): Ability {
@@ -283,14 +606,14 @@ internal class TelegramAssistantFacade(
                         remove(command.name)
                     }
                     // Put new one
-                    put(command.name, CommandInAction(command.input(), message.messageId))
+                    put(command.name, CommandInAction(message.messageId))
                 }
             }.reply(
                 { _, upd ->
                     handleCommandWithInputResponse(
                         command.name,
                         upd.message,
-                        { values, input -> action(upd, values, input) },
+                        { values -> action(upd, values) },
                         { result -> successMessage(upd, result) },
                         errorMessage
                     )
@@ -304,7 +627,7 @@ internal class TelegramAssistantFacade(
     private fun <T> handleCommandWithInputResponse(
         commandName: String,
         userMessage: Message,
-        action: (Map<String, String>, Any) -> T,
+        action: (Map<String, String>) -> T,
         successMessage: (T) -> String,
         errorMessage: (Map<String, String>) -> String
     ) {
@@ -314,7 +637,7 @@ internal class TelegramAssistantFacade(
                 "Непредвиденная ошибка, input не найден"
             }.run {
                 try {
-                    action(values, input).also {
+                    action(values).also {
                         sendApiMethod(sendMessageToAdmins(
                             successMessage(it),
                             userMessage.messageId
@@ -417,7 +740,6 @@ internal class TelegramAssistantFacade(
             return builder()
                 .privacy(Privacy.ADMIN)
                 .locality(Locality.GROUP)
-                .input(0)
         }
 
         private fun parseStringToMap(input: String): Map<String, String> {

@@ -10,13 +10,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import net.kravuar.vestnik.source.Source
-
-enum class Status {
-    NEW,
-    PROCESSED,
-    DECLINED,
-    POSTED
-}
+import java.time.OffsetDateTime
 
 @Entity
 class Article(
@@ -31,9 +25,18 @@ class Article(
     @Lob
     var content: String,
     @Column(nullable = false)
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
+    @Column(nullable = false)
     @Enumerated(EnumType.ORDINAL)
     var status: Status = Status.NEW,
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
-)
+) {
+    enum class Status {
+        NEW,
+        PROCESSED,
+        DECLINED,
+        POSTED
+    }
+}

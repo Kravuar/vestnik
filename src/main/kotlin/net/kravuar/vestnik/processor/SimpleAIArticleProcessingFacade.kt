@@ -14,23 +14,23 @@ internal class SimpleAIArticleProcessingFacade(
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
 ) : AIArticleProcessingFacade {
     override fun findRoot(source: String, mode: String): AIArticleProcessingNode {
-        return aiArticleProcessingNodesRepository.findBySourceAndModeAndParentIsNull(source, mode);
+        return aiArticleProcessingNodesRepository.findBySourceAndModeAndParentIsNullAndSourceDisabledIsFalse(source, mode)
     }
 
 
     override fun getSequences(): List<AIArticleProcessingFacade.SequenceInfo> {
-        return aiArticleProcessingNodesRepository.findAllByParentIsNull()
+        return aiArticleProcessingNodesRepository.findAllByParentIsNullAndSourceDisabledIsFalse()
             .map { AIArticleProcessingFacade.SequenceInfo(it.id!!, it.source.name, it.mode) }
     }
 
     override fun getSequence(source: String, mode: String): List<AIArticleProcessingNode> {
         return generateSequence(aiArticleProcessingNodesRepository
-            .findBySourceAndModeAndParentIsNull(source, mode)) { it.child }
+            .findBySourceAndModeAndParentIsNullAndSourceDisabledIsFalse(source, mode)) { it.child }
             .toList()
     }
 
     override fun getModes(source: String): List<String> {
-        return aiArticleProcessingNodesRepository.findAllBySourceAndParentIsNull(source)
+        return aiArticleProcessingNodesRepository.findAllBySourceAndParentIsNullAndSourceDisabledIsFalse(source)
             .map { it.mode }
     }
 

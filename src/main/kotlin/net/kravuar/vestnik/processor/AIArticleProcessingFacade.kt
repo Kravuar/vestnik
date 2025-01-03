@@ -19,9 +19,9 @@ interface AIArticleProcessingFacade {
     fun deleteSequence(sourceName: String, mode: String): List<AIArticleProcessingNode>
 
     data class AIArticleProcessingNodeInput(
-        val prompt: Optional<String>,
-        val model: Optional<String>,
-        val temperature: Optional<Double>,
+        var prompt: Optional<String> = Optional.empty(),
+        var model: Optional<String> = Optional.empty(),
+        var temperature: Optional<Double> = Optional.empty(),
     )
 
     fun insertNode(prevNodeId: Long, input: AIArticleProcessingNodeInput): AIArticleProcessingNode

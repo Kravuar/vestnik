@@ -30,7 +30,7 @@ internal class FunctionsConfig(
             return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {
                 put("id", destination.id)
                 put("name", destination.name)
-                put("type", destination.type.name)
+                put("platform", destination.platform.name)
             }
         } catch (e: Exception) {
             return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {
@@ -54,7 +54,7 @@ internal class FunctionsConfig(
                         JsonNodeFactory.instance.objectNode().apply {
                             put("id", it.id)
                             put("name", it.name)
-                            put("type", it.type.name)
+                            put("type", it.platform.name)
                         }
                     )
                 }
@@ -92,7 +92,7 @@ internal class FunctionsConfig(
                 put("successfullyCreated", true)
                 put("id", destination.id)
                 put("name", destination.name)
-                put("type", destination.type.name)
+                put("type", destination.platform.name)
             }
         } catch (e: Exception) {
             return@FunctionCallMeta JsonNodeFactory.instance.objectNode().apply {

@@ -2,8 +2,8 @@ package net.kravuar.vestnik.articles
 
 import com.apptasticsoftware.rssreader.Item
 import jakarta.transaction.Transactional
-import net.kravuar.vestnik.source.SourcesFacade
 import net.kravuar.vestnik.source.Source
+import net.kravuar.vestnik.source.SourcesFacade
 import java.time.Duration
 
 internal class SimpleArticlesFacade(
@@ -25,6 +25,22 @@ internal class SimpleArticlesFacade(
         }.also { articlesRepository.saveAll(it) }
     }
 
+    override fun getArticles(status: Article.Status?): List<Article> {
+        return if (status == null) {
+            articlesRepository.findAllSorted()
+        } else {
+            articlesRepository.findAllByStatusSorted(status)
+        }
+    }
+
+    override fun getArticles(status: Article.Status?, page: Int): Pair<Long, List<Article>> {
+        return if (status == null) {
+            articlesRepository.findPageSorted(page - 1).let { Pair(it.totalElements, it.content) }
+        } else {
+            articlesRepository.findPageByStatusSorted(status, page - 1).let { Pair(it.totalElements, it.content) }
+        }
+    }
+
     override fun getArticle(id: Long): Article {
         return articlesRepository.findById(id).orElseThrow { IllegalArgumentException("Новость с id=$id не найдена") }
     }
@@ -44,7 +60,6 @@ internal class SimpleArticlesFacade(
                 item.title.orElseThrow(),
                 item.content.orElseThrow(),
                 item.link.orElseThrow(),
-                Status.NEW
             )
         }
     }
