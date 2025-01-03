@@ -48,11 +48,6 @@
 			<version>${telegram.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>org.telegram</groupId>
-			<artifactId>telegrambots-abilities</artifactId>
-			<version>${telegram.version}</version>
-		</dependency>
-		<dependency>
 			<groupId>com.apptasticsoftware</groupId>
 			<artifactId>rssreader</artifactId>
 			<version>${rssreader.version}</version>

@@ -8,7 +8,7 @@ import org.springframework.context.event.EventListener
 
 @Configuration
 internal class EventConfig(
-    private val assistantFacade: AssistantFacade
+    private val assistantFacade: TelegramAssistantFacade
 ) {
     @EventListener(condition = "event.state == 'CREATED'")
     fun notifyAboutNewArticle(event: EntityEvent<Article>) {

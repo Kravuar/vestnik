@@ -12,6 +12,8 @@ import java.time.OffsetDateTime
 
 @Entity
 class Post(
+    @Id
+    var id: Int,
     @ManyToOne(optional = false)
     var article: Article,
     @ManyToOne(optional = false)
@@ -22,7 +24,4 @@ class Post(
     var adminId: String,
     @Column(nullable = false)
     val timestamp: OffsetDateTime = OffsetDateTime.now(),
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Int? = null,
 )
