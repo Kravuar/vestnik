@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor
+package net.kravuar.vestnik.processor.ai
 
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
@@ -6,40 +6,38 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_MODEL
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_TEMPERATURE
 import net.kravuar.vestnik.source.Source
-import net.kravuar.vestnik.source.SourcesFacade
 
-internal class SimpleAIArticleProcessingFacade(
-    private val sourcesFacade: SourcesFacade,
+internal class SimpleAIArticleProcessingNodesFacade(
     private val entityManager: EntityManager,
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
-) : AIArticleProcessingFacade {
-    override fun findRoot(source: String, mode: String): AIArticleProcessingNode {
-        return aiArticleProcessingNodesRepository.findBySourceAndModeAndParentIsNullAndSourceDisabledIsFalse(source, mode)
+) : AIArticleProcessingNodesFacade {
+    override fun getSequences(): List<AIArticleProcessingNodesFacade.SequenceInfo> {
+        return aiArticleProcessingNodesRepository
+            .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse()
+            .map { AIArticleProcessingNodesFacade.SequenceInfo(it.id!!, it.source, it.mode) }
     }
 
-
-    override fun getSequences(): List<AIArticleProcessingFacade.SequenceInfo> {
-        return aiArticleProcessingNodesRepository.findAllByParentIsNullAndSourceDisabledIsFalse()
-            .map { AIArticleProcessingFacade.SequenceInfo(it.id!!, it.source.name, it.mode) }
-    }
-
-    override fun getSequence(source: String, mode: String): List<AIArticleProcessingNode> {
+    override fun getSequence(source: Source, mode: String): List<ChainedAIArticleProcessingNode> {
         return generateSequence(aiArticleProcessingNodesRepository
-            .findBySourceAndModeAndParentIsNullAndSourceDisabledIsFalse(source, mode)) { it.child }
-            .toList()
+            .findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source, mode)
+        ) { it.child }.toList()
     }
 
-    override fun getModes(source: String): List<String> {
-        return aiArticleProcessingNodesRepository.findAllBySourceAndParentIsNullAndSourceDisabledIsFalse(source)
+    override fun getModes(source: Source): List<String> {
+        return aiArticleProcessingNodesRepository
+            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source)
             .map { it.mode }
+    }
+
+    override fun getReprocessNode(): AIArticleProcessingNode {
+        return REPROCESS_NODE
     }
 
     @Transactional
     override fun createSequence(
-        sourceName: String,
+        source: Source,
         mode: String
-    ): List<AIArticleProcessingNode> {
-        val source = sourcesFacade.getSource(sourceName)
+    ): List<ChainedAIArticleProcessingNode> {
         val rootNode = createInitialRootNode(source, mode)
         val formattingNode = createInitialFormattingNode(source, mode)
 
@@ -53,11 +51,11 @@ internal class SimpleAIArticleProcessingFacade(
 
     @Transactional
     override fun deleteSequence(
-        sourceName: String,
+        source: Source,
         mode: String
-    ): List<AIArticleProcessingNode> {
+    ): List<ChainedAIArticleProcessingNode> {
         // Find sequence
-        val sequence = getSequence(sourceName, mode)
+        val sequence = getSequence(source, mode)
 
         // Delete it
         aiArticleProcessingNodesRepository.deleteAll(sequence)
@@ -69,8 +67,8 @@ internal class SimpleAIArticleProcessingFacade(
     @Transactional
     override fun insertNode(
         prevNodeId: Long,
-        input: AIArticleProcessingFacade.AIArticleProcessingNodeInput
-    ): AIArticleProcessingNode {
+        input: AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput
+    ): ChainedAIArticleProcessingNode {
         // Find existing
         val previousNode = aiArticleProcessingNodesRepository
             .findById(prevNodeId)
@@ -82,7 +80,7 @@ internal class SimpleAIArticleProcessingFacade(
         nextNode?.let { entityManager.lock(it, LockModeType.PESSIMISTIC_WRITE) }
 
         // Insert new
-        val newNode = AIArticleProcessingNode(
+        val newNode = ChainedAIArticleProcessingNode(
             previousNode.source,
             previousNode.mode,
             input.model.orElse(DEFAULT_MODEL),
@@ -105,7 +103,7 @@ internal class SimpleAIArticleProcessingFacade(
 
 
     @Transactional
-    override fun deleteNode(nodeId: Long): AIArticleProcessingNode {
+    override fun deleteNode(nodeId: Long): ChainedAIArticleProcessingNode {
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
@@ -134,7 +132,7 @@ internal class SimpleAIArticleProcessingFacade(
     }
 
     @Transactional
-    override fun updateNode(nodeId: Long, input: AIArticleProcessingFacade.AIArticleProcessingNodeInput): AIArticleProcessingNode {
+    override fun updateNode(nodeId: Long, input: AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput): ChainedAIArticleProcessingNode {
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
@@ -150,8 +148,20 @@ internal class SimpleAIArticleProcessingFacade(
     }
 
     companion object {
-        private fun createInitialRootNode(source: Source, mode: String): AIArticleProcessingNode {
-            return AIArticleProcessingNode(
+        private val REPROCESS_NODE = ReprocessNode()
+
+        data class ReprocessNode(
+            override var model: String = DEFAULT_MODEL,
+            override var temperature: Double = DEFAULT_TEMPERATURE,
+            override var prompt: String =
+                """Ты высококвалифицированный редактор новостей для новостного канала в социальной сети. Твоя роль заключается в доработке новостного контента для публикации в Telegram, строго придерживаясь предоставленных замечаний и инструкций.
+                Твоя задача - отредактировать новость или ее оформление в соответствии с замечаниями и предоставить окончательный текст статьи, готовый к публикации, в качестве ответа.
+                Ответ должен содержать только окончательную версию новостного сообщения для канала.
+                """
+        ): AIArticleProcessingNode
+
+        private fun createInitialRootNode(source: Source, mode: String): ChainedAIArticleProcessingNode {
+            return ChainedAIArticleProcessingNode(
                 source,
                 mode,
                 DEFAULT_MODEL,
@@ -170,8 +180,8 @@ internal class SimpleAIArticleProcessingFacade(
             )
         }
 
-        private fun createInitialFormattingNode(source: Source, mode: String): AIArticleProcessingNode {
-            return AIArticleProcessingNode(
+        private fun createInitialFormattingNode(source: Source, mode: String): ChainedAIArticleProcessingNode {
+            return ChainedAIArticleProcessingNode(
                 source,
                 mode,
                 DEFAULT_MODEL,

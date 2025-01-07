@@ -1,27 +1,22 @@
 package net.kravuar.vestnik.post
 
 import jakarta.transaction.Transactional
-import net.kravuar.vestnik.articles.ArticlesFacade
-import net.kravuar.vestnik.destination.ChannelsFacade
+import net.kravuar.vestnik.post.PostsFacade.PostInput
 
 internal class SimplePostsFacade(
     private val postsRepository: PostsRepository,
-    private val articlesFacade: ArticlesFacade,
-    private val channelsFacade: ChannelsFacade,
 ) : PostsFacade {
     override fun getPosts(articleId: Long): List<Post> {
-        return postsRepository.findAllByArticleId(articleId)
+        return postsRepository.findAllByProcessedArticleArticleId(articleId)
     }
 
     @Transactional
-    override fun addPost(articleId: Long, channelId: String, channelPostId: Long, adminId: String): Post {
-        val article = articlesFacade.getArticle(articleId)
-        val channel = channelsFacade.getChannel(channelId)
+    override fun addPost(postInput: PostInput): Post {
         return postsRepository.save(Post(
-            article,
-            channel,
-            channelPostId,
-            adminId
+            postInput.processedArticle.orElseThrow { IllegalArgumentException("Обработанная статья не может отсутствовать") },
+            postInput.channel.orElseThrow { IllegalArgumentException("Целевой канал не может отсутствовать") },
+            postInput.channelPostId.orElseThrow { IllegalArgumentException("ID Поста в целевом канале не может отсутствовать") },
+            postInput.adminId.orElseThrow { IllegalArgumentException("ID Администратора не может отсутствовать") },
         ))
     }
 }

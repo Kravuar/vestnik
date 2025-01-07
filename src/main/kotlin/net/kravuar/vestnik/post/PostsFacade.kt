@@ -1,10 +1,17 @@
 package net.kravuar.vestnik.post
 
+import net.kravuar.vestnik.channels.Channel
+import net.kravuar.vestnik.processor.ProcessedArticle
 import java.util.Optional
 
 interface PostsFacade {
-    fun getPost(postId: Int): Post
-    fun getPostOptional(postId: Int): Optional<Post>
+    data class PostInput(
+        val processedArticle: Optional<ProcessedArticle>,
+        val channel: Optional<Channel>,
+        val channelPostId: Optional<Long>,
+        val adminId: Optional<String>,
+        val isForwarded: Optional<Boolean>,
+    )
     fun getPosts(articleId: Long): List<Post>
-    fun addPost(articleId: Long, channelId: String, channelPostId: Long, adminId: String): Post
+    fun addPost(postInput: PostInput): Post
 }

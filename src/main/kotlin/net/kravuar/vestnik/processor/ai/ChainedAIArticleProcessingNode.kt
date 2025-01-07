@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor
+package net.kravuar.vestnik.processor.ai
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -14,31 +14,38 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.source.Source
 
+interface AIArticleProcessingNode {
+    var model: String
+    var temperature: Double
+    var prompt: String
+}
+
 @Entity
 @Table(indexes = [
     Index(columnList = "source,mode", unique = true),
 ])
-class AIArticleProcessingNode(
+class ChainedAIArticleProcessingNode(
     @ManyToOne(optional = false)
     @Column(nullable = false, updatable = false)
     var source: Source,
     @Column(nullable = false)
     @NotBlank
+    @Size(max = 16)
     var mode: String,
     @Column(nullable = false)
     @NotBlank
-    var model: String,
+    override var model: String,
     @Column(nullable = false)
     @Size(min = 0, max = 1)
-    var temperature: Double,
+    override var temperature: Double,
     @Column(nullable = false)
     @NotBlank
-    var prompt: String,
+    override var prompt: String,
     @OneToOne(fetch = FetchType.LAZY)
-    var parent: AIArticleProcessingNode? = null,
+    var parent: ChainedAIArticleProcessingNode? = null,
     @OneToOne(mappedBy = "parent")
-    var child: AIArticleProcessingNode? = null,
+    var child: ChainedAIArticleProcessingNode? = null,
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
-)
+) : AIArticleProcessingNode

@@ -5,5 +5,5 @@ import org.springframework.stereotype.Repository
 
 @Repository
 internal interface PostsRepository: JpaRepository<Post, Long> {
-    fun findAllByArticleId(articleId: Long): List<Post>
+    fun findAllByProcessedArticleArticleId(articleId: Long): List<Post>
 }

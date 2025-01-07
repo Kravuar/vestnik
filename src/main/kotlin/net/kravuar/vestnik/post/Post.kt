@@ -5,17 +5,20 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.ManyToOne
-import net.kravuar.vestnik.articles.Article
-import net.kravuar.vestnik.destination.Channel
+import jakarta.persistence.Table
+import net.kravuar.vestnik.channels.Channel
+import net.kravuar.vestnik.processor.ProcessedArticle
 import java.time.OffsetDateTime
 
 @Entity
+@Table(indexes = [
+    Index(columnList = "processedArticle,channel", unique = true),
+])
 class Post(
-    @Id
-    var id: Int,
     @ManyToOne(optional = false)
-    var article: Article,
+    var processedArticle: ProcessedArticle,
     @ManyToOne(optional = false)
     var channel: Channel,
     @Column(nullable = false)
@@ -23,5 +26,10 @@ class Post(
     @Column(nullable = false)
     var adminId: String,
     @Column(nullable = false)
-    val timestamp: OffsetDateTime = OffsetDateTime.now(),
+    var isForwarded: Boolean = false,
+    @Column(nullable = false)
+    val creationTimestamp: OffsetDateTime = OffsetDateTime.now(),
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = null,
 )

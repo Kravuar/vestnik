@@ -1,28 +1,31 @@
-package net.kravuar.vestnik.articles
+package net.kravuar.vestnik.processor
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
-import net.kravuar.vestnik.source.Source
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
+import net.kravuar.vestnik.articles.Article
 import java.time.OffsetDateTime
 
 @Entity
-class Article(
+class ProcessedArticle(
     @ManyToOne(optional = false)
-    @Column(updatable = false)
-    var source: Source,
+    var article: Article,
     @Column(nullable = false)
-    var title: String,
+    @Lob
+    var content: String,
     @Column(nullable = false)
-    var description: String,
+    @NotBlank
+    @Size(max = 16)
+    var mode: String,
     @Column(nullable = false)
-    var url: String,
-    @Column(nullable = false)
-    var createdAt: OffsetDateTime = OffsetDateTime.now(),
+    val createdAt: OffsetDateTime = OffsetDateTime.now(),
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = null
+    var id: Long? = null,
 )

@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.events
+package net.kravuar.vestnik.commons
 
 import org.springframework.context.ApplicationEvent
 

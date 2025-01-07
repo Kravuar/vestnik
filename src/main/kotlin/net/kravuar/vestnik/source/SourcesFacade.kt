@@ -1,7 +1,7 @@
 package net.kravuar.vestnik.source
 
 import com.apptasticsoftware.rssreader.Item
-import net.kravuar.vestnik.destination.Channel
+import net.kravuar.vestnik.channels.Channel
 import java.time.Duration
 import java.util.Optional
 

@@ -1,6 +1,6 @@
 package net.kravuar.vestnik.articles
 
-import net.kravuar.vestnik.events.EntityEvent
+import net.kravuar.vestnik.commons.EntityEvent
 import net.kravuar.vestnik.source.Source
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener

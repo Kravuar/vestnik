@@ -1,0 +1,81 @@
+package net.kravuar.vestnik.processor.ai
+
+import jakarta.transaction.Transactional
+import net.kravuar.vestnik.articles.Article
+import net.kravuar.vestnik.processor.ProcessedArticle
+import net.kravuar.vestnik.processor.ProcessedArticleRepository
+import net.kravuar.vestnik.processor.ProcessedArticlesFacade
+import net.kravuar.vestnik.scrapping.Scrapper
+import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.SystemMessage
+import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.prompt.ChatOptionsBuilder
+import org.springframework.ai.chat.prompt.Prompt
+import java.util.Optional
+
+internal class AIProcessingArticlesFacade(
+    private val chatModel: ChatModel,
+    private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
+    private val processedArticleRepository: ProcessedArticleRepository,
+    private val scrapper: Scrapper,
+) : ProcessedArticlesFacade {
+    @Transactional
+    override fun processArticle(article: Article, mode: String): ProcessedArticle {
+        return aiArticleProcessingNodesFacade.getSequence(article.source, mode).let { sequence ->
+            val processedContent = sequence
+                .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->
+                    chatModel.call(
+                        Prompt(
+                            listOf<Message>(
+                                SystemMessage(node.prompt),
+                                UserMessage(currentContent)
+                            ),
+                            ChatOptionsBuilder.builder()
+                                .withModel(node.model)
+                                .withTemperature(node.temperature)
+                                .build()
+                        )
+                    ).result.output.content
+                }
+            processedArticleRepository.save(ProcessedArticle(article, processedContent, mode))
+        }
+    }
+
+    override fun getModes(article: Article): List<String> {
+        return aiArticleProcessingNodesFacade.getModes(article.source)
+    }
+
+    @Transactional
+    override fun reprocessArticle(processedArticleId: Long, remarks: String): ProcessedArticle {
+        return getProcessedArticle(processedArticleId)
+            .run {
+                val reprocessNode = aiArticleProcessingNodesFacade.getReprocessNode()
+                val reprocessedContent = chatModel.call(
+                    Prompt(
+                        listOf<Message>(
+                            SystemMessage(reprocessNode.prompt),
+                            UserMessage(content)
+                        ),
+                        ChatOptionsBuilder.builder()
+                            .withModel(reprocessNode.model)
+                            .withTemperature(reprocessNode.temperature)
+                            .build()
+                    )
+                ).result.output.content
+                content = reprocessedContent
+                processedArticleRepository.save(this)
+            }
+    }
+
+    override fun getProcessedArticle(id: Long): ProcessedArticle {
+        return processedArticleRepository.findById(id)
+            .orElseThrow { throw RuntimeException("Обработанная статья с id=$id не найдена") }
+    }
+
+    override fun getProcessedArticleOptional(id: Long): Optional<ProcessedArticle> {
+        return processedArticleRepository.findById(id)
+    }
+}
+
+

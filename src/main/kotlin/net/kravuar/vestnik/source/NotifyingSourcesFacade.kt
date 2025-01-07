@@ -1,7 +1,7 @@
 package net.kravuar.vestnik.source
 
 import com.apptasticsoftware.rssreader.Item
-import net.kravuar.vestnik.events.EntityEvent
+import net.kravuar.vestnik.commons.EntityEvent
 import org.springframework.context.ApplicationEventPublisher
 import java.time.Duration
 

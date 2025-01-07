@@ -1,6 +1,6 @@
 package net.kravuar.vestnik.articles
 
-import net.kravuar.vestnik.events.EntityEvent
+import net.kravuar.vestnik.commons.EntityEvent
 import org.springframework.context.ApplicationEventPublisher
 import java.time.Duration
 
@@ -18,14 +18,6 @@ internal class NotifyingArticlesFacade(
         return articlesFacade.fetchAndStoreLatestNews(sourceName, delta).onEach {
             eventPublisher.publishEvent(EntityEvent.created(this, it))
         }
-    }
-
-    override fun getArticles(status: Article.Status?): List<Article> {
-        return articlesFacade.getArticles(status)
-    }
-
-    override fun getArticles(status: Article.Status?, page: Int): Pair<Long, List<Article>> {
-        return articlesFacade.getArticles(status, page)
     }
 
     override fun getArticle(id: Long): Article {

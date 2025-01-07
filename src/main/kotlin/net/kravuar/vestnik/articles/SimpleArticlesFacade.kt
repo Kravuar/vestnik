@@ -1,6 +1,7 @@
 package net.kravuar.vestnik.articles
 
 import com.apptasticsoftware.rssreader.Item
+import io.ktor.client.utils.EmptyContent.status
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
@@ -25,22 +26,6 @@ internal class SimpleArticlesFacade(
         }.also { articlesRepository.saveAll(it) }
     }
 
-    override fun getArticles(status: Article.Status?): List<Article> {
-        return if (status == null) {
-            articlesRepository.findAllSorted()
-        } else {
-            articlesRepository.findAllByStatusSorted(status)
-        }
-    }
-
-    override fun getArticles(status: Article.Status?, page: Int): Pair<Long, List<Article>> {
-        return if (status == null) {
-            articlesRepository.findPageSorted(page - 1).let { Pair(it.totalElements, it.content) }
-        } else {
-            articlesRepository.findPageByStatusSorted(status, page - 1).let { Pair(it.totalElements, it.content) }
-        }
-    }
-
     override fun getArticle(id: Long): Article {
         return articlesRepository.findById(id).orElseThrow { IllegalArgumentException("Новость с id=$id не найдена") }
     }
@@ -48,8 +33,9 @@ internal class SimpleArticlesFacade(
     @Transactional
     override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
         return getArticle(id).apply {
-            input.content.ifPresent { content = it }
-            input.status.ifPresent { status = it }
+            input.title.ifPresent { title= it }
+            input.description.ifPresent { description= it }
+            input.url.ifPresent { url = it }
         }
     }
 

@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.ManyToMany
 import jakarta.validation.constraints.NotBlank
-import net.kravuar.vestnik.destination.Channel
+import net.kravuar.vestnik.channels.Channel
 import java.time.Duration
 
 @Entity
@@ -31,5 +31,5 @@ class Source(
     var suspended: Boolean? = null,
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Int? = null
+    var id: Long? = null
 )
