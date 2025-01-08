@@ -13,7 +13,7 @@ internal class EventConfig(
 
     @EventListener(condition = "#event.state == 'CREATED'")
     fun createInitialSequence(event: EntityEvent<Source>) {
-        aiArticleProcessingNodesFacade.createSequence(
+        aiArticleProcessingNodesFacade.createChain(
             event.entity,
             DEFAULT_MODE,
         )

@@ -20,8 +20,8 @@ internal open class AIProcessingArticlesFacade(
 ) : ProcessedArticlesFacade {
     @Transactional
     override fun processArticle(article: Article, mode: String): ProcessedArticle {
-        return aiArticleProcessingNodesFacade.getSequence(article.source, mode).let { sequence ->
-            val processedContent = sequence
+        return aiArticleProcessingNodesFacade.getChain(article.source, mode).let { chain ->
+            val processedContent = chain
                 .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->
                     chatModel.call(
                         Prompt(

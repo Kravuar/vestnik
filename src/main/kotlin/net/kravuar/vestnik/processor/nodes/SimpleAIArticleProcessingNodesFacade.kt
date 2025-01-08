@@ -5,19 +5,32 @@ import jakarta.persistence.LockModeType
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_MODEL
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_TEMPERATURE
+import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
+import org.springframework.data.domain.PageRequest
 
 internal open class SimpleAIArticleProcessingNodesFacade(
     private val entityManager: EntityManager,
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
 ) : AIArticleProcessingNodesFacade {
-    override fun getSequences(): List<AIArticleProcessingNodesFacade.SequenceInfo> {
+    override fun getChains(): List<AIArticleProcessingNodesFacade.ChainInfo> {
         return aiArticleProcessingNodesRepository
             .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse()
-            .map { AIArticleProcessingNodesFacade.SequenceInfo(it.id!!, it.source, it.mode) }
+            .map { AIArticleProcessingNodesFacade.ChainInfo(it.id!!, it.source, it.mode) }
     }
 
-    override fun getSequence(source: Source, mode: String): List<ChainedAIArticleProcessingNode> {
+    override fun getChains(page: Int): Page<AIArticleProcessingNodesFacade.ChainInfo> {
+        return aiArticleProcessingNodesRepository
+            .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(PageRequest.of(
+                page,
+                Page.DEFAULT_PAGE_SIZE
+            )).let { Page(
+                it.totalPages,
+                it.content.map { rootNode -> AIArticleProcessingNodesFacade.ChainInfo(rootNode.id!!, rootNode.source, rootNode.mode) }
+            ) }
+    }
+
+    override fun getChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode> {
         return generateSequence(aiArticleProcessingNodesRepository
             .findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source, mode)
         ) { it.child }.toList()
@@ -29,12 +42,23 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             .map { it.mode }
     }
 
+    override fun getModes(source: Source, page: Int): Page<String> {
+        return aiArticleProcessingNodesRepository
+            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source,PageRequest.of(
+                page,
+                Page.DEFAULT_PAGE_SIZE
+            )).let { Page(
+                it.totalPages,
+                it.content.map { rootNode -> rootNode.mode }
+            ) }
+    }
+
     override fun getReprocessNode(): AIArticleProcessingNode {
         return REPROCESS_NODE
     }
 
     @Transactional
-    override fun createSequence(
+    override fun createChain(
         source: Source,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
@@ -50,18 +74,18 @@ internal open class SimpleAIArticleProcessingNodesFacade(
     }
 
     @Transactional
-    override fun deleteSequence(
+    override fun deleteChain(
         source: Source,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
-        // Find sequence
-        val sequence = getSequence(source, mode)
+        // Find chain
+        val chain = getChain(source, mode)
 
         // Delete it
-        aiArticleProcessingNodesRepository.deleteAll(sequence)
+        aiArticleProcessingNodesRepository.deleteAll(chain)
 
         // Delete it
-        return sequence
+        return chain
     }
 
     @Transactional

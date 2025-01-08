@@ -29,7 +29,7 @@ internal class AssistantConfiguration {
         articlesFacade: ArticlesFacade,
         processedArticlesFacade: ProcessedArticlesFacade,
         aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade
-    ): AssistantFacade = TelegramAssistantFacade(
+    ): TelegramAssistantFacade = TelegramAssistantFacade(
         adminChannel,
         admins,
         owner,

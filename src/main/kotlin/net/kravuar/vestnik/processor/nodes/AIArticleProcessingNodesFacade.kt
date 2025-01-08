@@ -1,20 +1,23 @@
 package net.kravuar.vestnik.processor.nodes
 
+import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import java.util.Optional
 
 interface AIArticleProcessingNodesFacade {
-    data class SequenceInfo(
+    data class ChainInfo(
         val id: Long,
         val source: Source,
         val mode: String,
     )
-    fun getSequences(): List<SequenceInfo>
-    fun getSequence(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
+    fun getChains(): List<ChainInfo>
+    fun getChains(page: Int): Page<ChainInfo>
+    fun getChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
     fun getModes(source: Source): List<String>
+    fun getModes(source: Source, page: Int): Page<String>
 
-    fun createSequence(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
-    fun deleteSequence(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
+    fun createChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
+    fun deleteChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
 
     data class AIArticleProcessingNodeInput(
         var prompt: Optional<String> = Optional.empty(),
