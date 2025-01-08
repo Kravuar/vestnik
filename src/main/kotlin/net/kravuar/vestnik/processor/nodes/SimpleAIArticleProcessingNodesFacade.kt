@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor.ai
+package net.kravuar.vestnik.processor.nodes
 
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
@@ -7,7 +7,7 @@ import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_MODEL
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_TEMPERATURE
 import net.kravuar.vestnik.source.Source
 
-internal class SimpleAIArticleProcessingNodesFacade(
+internal open class SimpleAIArticleProcessingNodesFacade(
     private val entityManager: EntityManager,
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
 ) : AIArticleProcessingNodesFacade {

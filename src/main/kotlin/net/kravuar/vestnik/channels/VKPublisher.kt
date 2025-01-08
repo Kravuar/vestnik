@@ -1,15 +1,18 @@
 package net.kravuar.vestnik.channels
 
+import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
 
 internal class VKPublisher(
-) : ChannelPublisher {
-    override fun publish(processedArticle: ProcessedArticle, channel: Channel): MessageId {
-        TODO()
+    postsFacade: PostsFacade
+) : AbstractPostPublisher(postsFacade) {
+
+    override fun sendPost(processedArticle: ProcessedArticle, channel: Channel): MessageId {
+        TODO("Not yet implemented")
     }
 
-    override fun forward(originalChannel: Channel, messageId: MessageId, targetChannel: Channel): MessageId {
-        TODO()
+    override fun sendForward(originalChannel: Channel, messageId: MessageId, targetChannel: Channel): MessageId {
+        TODO("Not yet implemented")
     }
 
     override fun platform(): ChannelPlatform {

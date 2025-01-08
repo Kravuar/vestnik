@@ -15,8 +15,8 @@ enum class ChannelPlatform {
 @Entity
 class Channel(
     @Id
-    @NotBlank
-    var id: String,
+    @Column(nullable = false)
+    var id: Long,
     @Column(nullable = false, unique = true)
     @NotBlank
     var name: String,

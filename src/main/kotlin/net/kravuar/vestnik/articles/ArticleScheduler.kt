@@ -11,7 +11,9 @@ internal class ArticleScheduler(
     private val tasksBySource = mutableMapOf<String, ScheduledFuture<*>>()
 
     fun stopPollingAll() {
-        tasksBySource.values.forEach { it.cancel(true) }
+        tasksBySource.values.forEach {
+            it.cancel(true)
+        }
     }
 
     @Synchronized

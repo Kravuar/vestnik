@@ -24,8 +24,6 @@ class Post(
     @Column(nullable = false)
     var channelPostId: Long,
     @Column(nullable = false)
-    var adminId: String,
-    @Column(nullable = false)
     var isForwarded: Boolean = false,
     @Column(nullable = false)
     val creationTimestamp: OffsetDateTime = OffsetDateTime.now(),

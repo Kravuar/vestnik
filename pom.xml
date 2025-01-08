@@ -21,6 +21,7 @@
 		<rssreader.version>3.9.1</rssreader.version>
 		<jsoup.version>1.18.3</jsoup.version>
 		<tgbotapi.version>23.1.0</tgbotapi.version>
+		<guava.version>33.4.0-jre</guava.version>
 	</properties>
 
 	<dependencies>
@@ -60,6 +61,12 @@
 			<groupId>org.jsoup</groupId>
 			<artifactId>jsoup</artifactId>
 			<version>${jsoup.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>${guava.version}</version>
+			<scope>compile</scope>
 		</dependency>
 
 		<dependency>

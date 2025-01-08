@@ -2,45 +2,67 @@ package net.kravuar.vestnik.assistant
 
 import dev.inmo.micro_utils.coroutines.subscribeSafelyWithoutExceptions
 import dev.inmo.tgbotapi.bot.TelegramBot
+import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
 import dev.inmo.tgbotapi.extensions.api.edit.reply_markup.editMessageReplyMarkup
+import dev.inmo.tgbotapi.extensions.api.edit.text.editMessageText
+import dev.inmo.tgbotapi.extensions.api.files.downloadFileStream
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.extensions.api.send.sendMessage
+import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.buildBehaviour
+import dev.inmo.tgbotapi.extensions.behaviour_builder.expectations.waitAnyContentMessage
 import dev.inmo.tgbotapi.extensions.behaviour_builder.expectations.waitMessageDataCallbackQuery
+import dev.inmo.tgbotapi.extensions.behaviour_builder.expectations.waitTextMessage
+import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommandWithArgs
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onMessageDataCallbackQuery
-import dev.inmo.tgbotapi.extensions.behaviour_builder.utils.marker_factories.ByIdCallbackQueryMarkerFactory
 import dev.inmo.tgbotapi.extensions.utils.extensions.sameMessage
 import dev.inmo.tgbotapi.extensions.utils.formatting.boldHTML
 import dev.inmo.tgbotapi.extensions.utils.formatting.hashTagHTML
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.extensions.utils.updates.retrieving.longPolling
+import dev.inmo.tgbotapi.types.BotCommand
 import dev.inmo.tgbotapi.types.ChatId
 import dev.inmo.tgbotapi.types.RawChatId
 import dev.inmo.tgbotapi.types.UserId
 import dev.inmo.tgbotapi.types.buttons.InlineKeyboardMarkup
+import dev.inmo.tgbotapi.types.buttons.KeyboardMarkup
+import dev.inmo.tgbotapi.types.commands.BotCommandScope
 import dev.inmo.tgbotapi.types.message.HTMLParseMode
-import dev.inmo.tgbotapi.utils.regular
+import dev.inmo.tgbotapi.types.message.abstracts.ContentMessage
+import dev.inmo.tgbotapi.types.message.abstracts.Message
+import dev.inmo.tgbotapi.types.message.content.MediaContent
+import dev.inmo.tgbotapi.types.message.content.MediaGroupContent
+import dev.inmo.tgbotapi.types.message.content.PhotoContent
+import dev.inmo.tgbotapi.types.message.content.TextContent
+import dev.inmo.tgbotapi.types.message.content.TextMessage
+import dev.inmo.tgbotapi.types.message.content.VideoContent
+import dev.inmo.tgbotapi.utils.newLine
 import dev.inmo.tgbotapi.utils.row
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import korlibs.time.days
+import korlibs.time.minutes
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.kravuar.vestnik.articles.Article
 import net.kravuar.vestnik.articles.ArticlesFacade
 import net.kravuar.vestnik.channels.Channel
 import net.kravuar.vestnik.channels.ChannelsFacade
-import net.kravuar.vestnik.post.Post
-import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
-import net.kravuar.vestnik.processor.ai.AIArticleProcessingNodesFacade
+import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.source.SourcesFacade
 import org.apache.logging.log4j.LogManager
 import java.io.InputStream
-import kotlin.time.Duration.Companion.seconds
+import java.util.function.Predicate
+import kotlin.time.Duration
 
 internal class TelegramAssistantFacade(
     adminChannelId: Long,
@@ -51,22 +73,51 @@ internal class TelegramAssistantFacade(
     private val channelsFacade: ChannelsFacade,
     private val articlesFacade: ArticlesFacade,
     private val processedArticlesFacade: ProcessedArticlesFacade,
-    private val postsFacade: PostsFacade,
     private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade
 ): AssistantFacade {
     private val adminChannel: ChatId = ChatId(RawChatId(adminChannelId))
     private val admins: Set<UserId> = adminsIds.map { UserId(RawChatId(it)) }.toSet()
     private val owner: UserId = UserId(RawChatId(ownerId))
 
+    private data class MessageWithReplyMarkup(
+        val message: String,
+        val replyMarkup: InlineKeyboardMarkup?
+    )
+
+    private enum class Command(
+        val commandName: String,
+        val description: String,
+        val args: List<String>
+    ) {
+        SHOW_SOURCES("showSources", "Показать список источников", emptyList()),
+        SHOW_SOURCE("showSource", "Показать источник", listOf("Имя источника")),
+        ADD_SOURCE("addSource", "Добавить источник", emptyList()),
+        DELETE_SOURCE("deleteSource", "Удалить источник по имени", listOf("Имя источника")),
+        UPDATE_SOURCE("updateSource", "Обновить источник", emptyList()),
+        SHOW_CHANNELS("showChannels", "Показать список каналов", emptyList()),
+        ADD_CHANNEL("addChannel", "Добавить канал", emptyList()),
+        DELETE_CHANNEL("deleteChannel", "Удалить канал по имени", listOf("Имя канала")),
+        SHOW_CHAINS("showChains", "Показать цепочки обработки статей", emptyList()),
+        SHOW_MODES("showModes", "Показать режимы обработки статей для источника", listOf("Имя источника")),
+        SHOW_CHAIN("showChain", "Показать конкретную цепочку", listOf("Имя источника", "Имя режима")),
+        ADD_CHAIN("addChain", "Добавить цепочку обработки статьи", emptyList()),
+        DELETE_CHAIN("deleteChain", "Удалить цепочку обработки статьи", listOf("Имя источника", "Имя режима")),
+        ADD_NODE("addNode", "Добавить узел после указанного узла", emptyList()),
+        DELETE_NODE("deleteNode", "Удалить узел обработки статьи", listOf("ID узла")),
+        UPDATE_NODE("updateNode", "Обновить узел обработки статьи", emptyList()),
+        SHOW_COMMANDS("showCommands", "Показать список команд", emptyList()),
+    }
+
     internal suspend fun start() {
         val behaviour = bot.buildBehaviour {
+
+            // PROCESS ARTICLE
             onMessageDataCallbackQuery(
-                dataRegex = PROCESS_ARTICLE_REGEX,
-                markerFactory = ByIdCallbackQueryMarkerFactory
+                dataRegex = PROCESS_ARTICLE_REGEX
             ) { processCallback ->
                 val data = processCallback.data.substringAfter("_")
                 val (mode, id) = getProcessArticleData(data)
-                LOG.info("Processing article $id, mode $mode")
+                LOG.info("Запущена обработка статьи id=$id, mode=$mode, messageId=${processCallback.message.messageId}")
 
                 // Process
                 val article = articlesFacade.getArticle(id)
@@ -74,7 +125,7 @@ internal class TelegramAssistantFacade(
 
                 // Retrieving channels
                 val channels = article.source.channels.associateBy { it.id }
-                val selected = mutableSetOf<String>()
+                val selected = mutableSetOf<Long>()
 
                 // Creating processed article message
                 val processedArticleMessage = send(
@@ -84,77 +135,215 @@ internal class TelegramAssistantFacade(
                     processedArticleMessage(processedArticle)
                 }
 
-                // Handle callback queries on that processed article message
+                // Handle interactions with that processed article
                 val processedArticleHandlerJob = waitMessageDataCallbackQuery().filter {
                     it.message.sameMessage(processedArticleMessage)
                 }.subscribeSafelyWithoutExceptions(this) { processedArticleCallback ->
-                    val selectedChanged = when {
+                    LOG.info(
+                        "Callback на обработанной статье id=${processedArticle.id}: " +
+                        "messageId=${processedArticleCallback.message.messageId}, " +
+                        "data=${processedArticleCallback.data}"
+                    )
+                    when {
                         // Select channel
                         SELECT_CHANNEL_REGEX.matches(processedArticleCallback.data) -> {
                             selected.add(getSelectChannelId(processedArticleCallback.data))
-                            true
+                            editMessageReplyMarkup(
+                                message = processedArticleMessage,
+                                replyMarkup = postReplyMarkup(channels.values, selected)
+                            )
                         }
                         // Deselect channel
                         DESELECT_CHANNEL_REGEX.matches(processedArticleCallback.data) -> {
                             selected.remove(getDeselectChannelId(processedArticleCallback.data))
-                            true
+                            editMessageReplyMarkup(
+                                message = processedArticleMessage,
+                                replyMarkup = postReplyMarkup(channels.values, selected)
+                            )
                         }
                         // Post article
-                        postCallbackData() == processedArticleCallback.data -> {
+                        processedArticleCallback.data == postCallbackData() -> {
                             val selectedChannels = selected.map {
                                 requireNotNull(channels[it])
                             }
 
+                            // Select primary channel message
                             val primaryChannelSelectionMessage = send(
                                 chatId = adminChannel,
-                                replyMarkup = primaryChannelsSelectionReplyMarkup(selectedChannels)
+                                replyMarkup = primaryChannelSelectionReplyMarkup(selectedChannels)
                             ) {
-                                regular("Выберите первичный канал")
+                                primaryChannelSelectionMessage()
                             }
 
-                            val primaryChannel = requireNotNull(channels[
-                                getSelectChannelId(waitMessageDataCallbackQuery()
-                                    .filter {
-                                        it.message.sameMessage(primaryChannelSelectionMessage)
-                                    }.first().data
-                                )
-                            ]) { "Выбранный первичный канал не может отсутствовать" }
+                            coroutineScope {
+                                // Primary channel selection handling
+                                val primaryChannel = requireNotNull(channels[
+                                    getSelectChannelId(waitMessageDataCallbackQuery()
+                                        .filter {
+                                            it.message.sameMessage(primaryChannelSelectionMessage)
+                                        }.first().data
+                                    )
+                                ]) { "Выбранный первичный канал не может отсутствовать" }
 
-                            val forwardChannels = selectedChannels
-                                .filter { it != primaryChannel }
-                            channelsFacade.postArticle(processedArticle, primaryChannel, forwardChannels)
+                                // Select delay message
+                                var postDelay = Duration.ZERO
+                                val mediaList = mutableListOf<InputStream>()
+                                val finalPostMessage = send(
+                                    chatId = adminChannel,
+                                    replyMarkup = finalPostActionReplyMarkup(postDelay)
+                                ) {
+                                    finalPostActionMessage(mediaList.size)
+                                }
 
-                            reply(to = primaryChannelSelectionMessage) {
-                                articlePostedMessage(processedArticle, primaryChannel, forwardChannels)
+                                // Handle media attachment
+                                waitAnyContentMessage().filter {
+                                    it.replyTo?.sameMessage(finalPostMessage) ?: false
+                                }.subscribeSafelyWithoutExceptions(this) { messageContent ->
+                                    val contentToProcess: List<MediaContent> = with(messageContent.content) {
+                                        when (this) {
+                                            is PhotoContent -> listOf(this)
+                                            is VideoContent -> listOf(this)
+                                            is MediaGroupContent<*> -> {
+                                                this.group.map { part ->
+                                                    part.content
+                                                }.also { content ->
+                                                    require(content.all { part ->
+                                                        part is PhotoContent || part is VideoContent
+                                                    }) { "Поддерживаются только фото/видео медиа файлы." }
+                                                }
+                                            }
+                                            else -> {
+                                                throw IllegalArgumentException("Поддерживаются только фото/видео медиа файлы.")
+                                            }
+                                        }
+                                    }
+                                    // Update attached medias
+                                    mediaList.clear()
+                                    mediaList.addAll(contentToProcess.map { media ->
+                                        downloadFileStream(media).toInputStream()
+                                    })
+
+                                    // Update message
+                                    editMessageText(
+                                        message = finalPostMessage
+                                    ) {
+                                        finalPostActionMessage(mediaList.size)
+                                    }
+                                }
+
+                                // Handle delay adjustment/final post action
+                                waitMessageDataCallbackQuery().filter {
+                                    it.message.sameMessage(finalPostMessage)
+                                }.onEach { delaySelectionCallback ->
+                                    if (PAGE_REGEX.matches(delaySelectionCallback.data)) {
+                                        val deltaMinutes = delaySelectionCallback.data.toInt()
+                                        postDelay = postDelay.plus(deltaMinutes.minutes)
+                                        editMessageText(
+                                            message = finalPostMessage,
+                                            replyMarkup = finalPostActionReplyMarkup(postDelay)
+                                        ) {
+                                            finalPostActionMessage(mediaList.size)
+                                        }
+                                    }
+                                }.filter { delaySelectionCallback ->
+                                    delaySelectionCallback.data == postCallbackData()
+                                }.first()
+
+                                // Delay itself
+                                if (postDelay != Duration.ZERO) {
+                                    delay(postDelay)
+                                }
+
+                                // Publishing
+                                val forwardChannels = selectedChannels
+                                    .filter { it != primaryChannel }
+                                channelsFacade.postArticle(processedArticle, primaryChannel, forwardChannels)
+
+                                reply(to = primaryChannelSelectionMessage) {
+                                    articlePostedMessage(processedArticle, primaryChannel, forwardChannels)
+                                }
                             }
-                            false
-                        }
-                        // Post article with media
-                        postWithMediaCallbackData() == processedArticleCallback.data -> {
-                            // TODO: this
-                            false
                         }
 
                         else -> {
-                            throw IllegalArgumentException("Неизвестный callback: ${processedArticleCallback.data}")
+                            throw IllegalArgumentException("Неизвестный callback при подготовке поста к публикации: ${processedArticleCallback.data}")
                         }
-                    }
-                    if (selectedChanged) {
-                        editMessageReplyMarkup(
-                            message = processedArticleMessage,
-                            replyMarkup = postReplyMarkup(channels.values, selected)
-                        )
                     }
                 }
 
-                delay(180.seconds)
-                processedArticleHandlerJob.cancel("Too old")
-                reply(
-                    to = processedArticleMessage
+                // Stop article processing after timeout
+                delay(ARTICLE_LIFETIME)
+                processedArticleHandlerJob.cancel("Новость устарела")
+                LOG.info(
+                    "Процесс для обработанной новости " +
+                    "id=${processedArticle.id}, " +
+                    "messageId=${processedArticleMessage.messageId} завершён"
+                )
+                editMessageText(
+                    message = processedArticleMessage,
                 ) {
-                    regular("Outdated")
+                    "[УСТАРЕЛО]".boldHTML() +
+                            newLine +
+                            processedArticleMessage(processedArticle)
                 }
             }
+
+            //
+            // ADMINISTRATION COMMANDS
+            //
+
+            onCommandWithArgs(
+                command = Command.SHOW_SOURCES.commandName
+            ) { userMessage, args ->
+                val pageSupplier = { page: Int ->
+                    val sources = sourcesFacade.getSources(page)
+                    val sourcesAsString = writeForMessage(sources.content.map {
+                        mapOf(
+                            "Id" to it.id,
+                            "Name" to it.name,
+                            "URL" to it.url,
+                            "Периодичность" to it.scheduleDelay,
+                            "Приостановлен" to it.suspended,
+                            "Удалён" to it.deleted
+                        )
+                    })
+
+                    MessageWithReplyMarkup(
+                        """Список источников:
+
+                        $sourcesAsString
+                        """,
+                        paginationMarkup(page, sources.totalPages)
+                    )
+                }
+                handleCallbackCommand(
+                    Command.SHOW_SOURCES,
+                    args,
+                    { PAGE_REGEX.matches(it) },
+                    { _ -> pageSupplier(1) },
+                    userMessage,
+                    { message, callback ->
+                        val page = pageSupplier(callback.toInt())
+                        editMessageText(
+                            message = message,
+                            text = page.message,
+                            replyMarkup = page.replyMarkup
+                        )
+                    }
+                )
+            }
+
+
+
+            setMyCommands(
+                Command.entries.map {
+                    BotCommand(
+                        it.commandName,
+                        "${it.description}, аргументы: ${it.args.joinToString(", ")}"
+                    )
+                },
+                scope = BotCommandScope.Chat(adminChannel)
+            )
 
             allUpdatesFlow.subscribeSafelyWithoutExceptions(this) {
                 LOG.debug(it)
@@ -175,23 +364,13 @@ internal class TelegramAssistantFacade(
         }
     }
 
-    override fun makePost(post: Post) {
-        TODO("Not yet implemented")
-    }
-
-    override fun makePostWithMedia(post: Post, media: List<InputStream>) {
-        TODO("Not yet implemented")
-    }
-
-    override fun makePostAsReply(post: Post, channels: List<Channel>) {
-        TODO("Not yet implemented")
-    }
-
     companion object {
         private val LOG = LogManager.getLogger(TelegramAssistantFacade::class.java)
 
         private const val SPLIT = "===============\n"
         private const val SPLIT_INPUT = ":="
+        private val ARTICLE_LIFETIME = 3.days
+        private val COMMAND_LIFETIME = 5.minutes
 
         //
         // PARSING/FORMATTING
@@ -267,6 +446,14 @@ internal class TelegramAssistantFacade(
             """.trimIndent()
         }
 
+        private fun primaryChannelSelectionMessage(): String {
+            return "Выберите первичный канал"
+        }
+
+        private fun finalPostActionMessage(mediasCount: Int): String {
+            return "Выберите когда опубликовать новость, прикрепите необходимые медиа файлы (${mediasCount} файлов прикреплено)"
+        }
+
         //
         // MARKUPS
         //
@@ -278,13 +465,10 @@ internal class TelegramAssistantFacade(
                         dataButton(mode, processArticleCallbackData(ProcessArticleData(mode, articleId)))
                     }
                 }
-                row {
-                    dataButton("Отклонить", declineArticleCallbackData(articleId))
-                }
             }
         }
 
-        private fun primaryChannelsSelectionReplyMarkup(channels: Collection<Channel>): InlineKeyboardMarkup {
+        private fun primaryChannelSelectionReplyMarkup(channels: Collection<Channel>): InlineKeyboardMarkup {
             return inlineKeyboard {
                 channels.chunked(2).forEach { chunk ->
                     row {
@@ -296,7 +480,25 @@ internal class TelegramAssistantFacade(
             }
         }
 
-        private fun postReplyMarkup(channels: Collection<Channel>, selected: Set<String>): InlineKeyboardMarkup {
+        private fun finalPostActionReplyMarkup(currentDelay: Duration): InlineKeyboardMarkup {
+            return inlineKeyboard {
+                row {
+                    dataButton("-10м", delayDeltaCallbackData(-10))
+                    dataButton("-1м", delayDeltaCallbackData(-1))
+                    dataButton("+1м", delayDeltaCallbackData(1))
+                    dataButton("+10м", delayDeltaCallbackData(10))
+                }
+                row {
+                    val message = when(currentDelay) {
+                        Duration.ZERO -> "Опубликовать сейчас"
+                        else -> "Опубликовать через ${currentDelay.minutes}м"
+                    }
+                    dataButton(message, postCallbackData())
+                }
+            }
+        }
+
+        private fun postReplyMarkup(channels: Collection<Channel>, selected: Set<Long>): InlineKeyboardMarkup {
             return inlineKeyboard {
                 channels.chunked(2).forEach { chunk ->
                     row {
@@ -317,7 +519,26 @@ internal class TelegramAssistantFacade(
 
                 row {
                     dataButton("Опубликовать", postCallbackData())
-                    dataButton("Опубликовать с Медиа", postWithMediaCallbackData())
+                }
+            }
+        }
+
+        private val PAGE_REGEX = Regex("^[1-9]\\d*\$")
+        private fun paginationMarkup(currentPage: Int, totalPages: Int): InlineKeyboardMarkup {
+            val prev = (currentPage - 1).toString()
+            val current = currentPage.toString()
+            val next = (currentPage + 1).toString()
+            return inlineKeyboard {
+                row {
+                    if (currentPage - 1 != 1) {
+                        dataButton("<< 1", "1")
+                    }
+                    dataButton(prev, prev)
+                    dataButton(current, current)
+                    dataButton(next, next)
+                    if (currentPage + 1 != totalPages) {
+                        dataButton(">> $totalPages", totalPages.toString())
+                    }
                 }
             }
         }
@@ -343,36 +564,172 @@ internal class TelegramAssistantFacade(
                 ) }
         }
 
-        private val DECLINE_ARTICLE_REGEX = Regex("DA_.*")
-        private fun declineArticleCallbackData(articleId: Long): String {
-            return "DA_${articleId}"
+        private val SELECT_CHANNEL_REGEX = Regex("SE_.*")
+        private fun selectChannelCallbackData(channelId: Long): String {
+            return "SE_${channelId}"
         }
-        private fun getDeclineArticleId(data: String): Long {
+        private fun getSelectChannelId(data: String): Long {
             return data.substringAfter("_").toLong()
         }
 
-        private val SELECT_CHANNEL_REGEX = Regex("SE_.*")
-        private fun selectChannelCallbackData(channelId: String): String {
-            return "SE_${channelId}"
-        }
-        private fun getSelectChannelId(data: String): String {
-            return data.substringAfter("_")
-        }
-
         private val DESELECT_CHANNEL_REGEX = Regex("DESE_.*")
-        private fun deselectChannelCallbackData(channelId: String): String {
+        private fun deselectChannelCallbackData(channelId: Long): String {
             return "DESE_${channelId}"
         }
-        private fun getDeselectChannelId(data: String): String {
-            return data.substringAfter("_")
+        private fun getDeselectChannelId(data: String): Long {
+            return data.substringAfter("_").toLong()
         }
 
         private fun postCallbackData(): String {
             return "POST"
         }
 
-        private fun postWithMediaCallbackData(): String {
-            return "POST_WM"
+        private val DELAY_DELTA_REGEX = Regex("^\\d+")
+        private fun delayDeltaCallbackData(minutes: Int): String {
+            return minutes.toString()
+        }
+
+        //
+        // COMMANDS
+        //
+
+        private suspend fun <BC : BehaviourContext> BC.handleCallbackCommand(
+            command: Command,
+            args: Array<String>,
+            callbackRegex: Predicate<String>,
+            replyMessageInit: (Map<String, String>) -> MessageWithReplyMarkup,
+            userMessage: TextMessage,
+            callback: suspend (ContentMessage<TextContent>, String) -> Unit,
+            unknownCallback: ((ContentMessage<TextContent>, String) -> Unit)? = null,
+        ) {
+            if (command.args.size != args.size) {
+                reply(
+                    to = userMessage,
+                    text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
+                )
+            }
+            val argsAsMap = args.withIndex().associateBy(
+                { command.args[it.index] },
+                { it.value }
+            )
+
+            // Send initial message
+            val messageWithReplyMarkup = replyMessageInit.invoke(argsAsMap)
+            val initialMessage = reply(
+                to = userMessage,
+                text = messageWithReplyMarkup.message,
+                replyMarkup = messageWithReplyMarkup.replyMarkup
+            )
+
+            // Wait for callbacks
+            val handleInputJob = launch {
+                waitMessageDataCallbackQuery().filter {
+                    it.message.sameMessage(initialMessage)
+                }.subscribeSafelyWithoutExceptions(this) { messageCallback ->
+                    if (callbackRegex.test(messageCallback.data)) {
+                        callback(initialMessage, messageCallback.data)
+                    } else {
+                        unknownCallback?.invoke(initialMessage, messageCallback.data)
+                    }
+                }
+            }
+
+            // Stop command processing after timeout
+            delay(COMMAND_LIFETIME)
+            handleInputJob.cancel("Обработчик команды устарел")
+            LOG.info(
+                "Процесс для обработки поисковой команды " +
+                        "command=${command.commandName}, " +
+                        "messageId=${initialMessage.messageId} завершён"
+            )
+            editMessageText(
+                message = initialMessage,
+            ) {
+                "[УСТАРЕЛО]".boldHTML() +
+                        newLine +
+                        initialMessage.content.text
+            }
+        }
+
+        private suspend fun <BC : BehaviourContext, T> BC.handleFormCommand(
+            command: Command,
+            userMessage: TextMessage,
+            schemaMessage: String,
+            action: (Map<String, String>) -> T,
+            successMessage: (Map<String, String>, T) -> String,
+            errorMessage: (Map<String, String>) -> String
+        ) {
+            // Send form message
+            val formMessage = reply(
+                to = userMessage,
+                text = schemaMessage
+            )
+
+            val handleInputJob = launch {
+                // Wait for reply with input
+                val inputMessage = waitTextMessage().filter {
+                    it.replyTo?.sameMessage(formMessage) ?: false
+                }.first()
+                val input = parseStringToMap(inputMessage.content.text)
+
+                handleCommand(
+                    command,
+                    inputMessage,
+                    { action(input) },
+                    { result -> successMessage(input, result) },
+                    { errorMessage(input) }
+                )
+            }
+
+            // Stop command processing after timeout
+            delay(COMMAND_LIFETIME)
+            handleInputJob.cancel("Обработчик команды устарел")
+            LOG.info(
+                "Процесс для обработки команды " +
+                        "command=${command.commandName}, " +
+                        "messageId=${formMessage.messageId} завершён"
+            )
+            editMessageText(
+                message = formMessage,
+            ) {
+                "[УСТАРЕЛО]".boldHTML() +
+                        newLine +
+                        formMessage.content.text
+            }
+        }
+
+        private suspend fun <BC : BehaviourContext, T> BC.handleCommand(
+            command: Command,
+            userMessage: TextMessage,
+            action: () -> T,
+            successMessage: (T) -> String,
+            errorMessage: () -> String
+        ) {
+            try {
+                action().also {
+                    try {
+                        reply(
+                            to = userMessage,
+                            text = successMessage(it)
+                        )
+                    } catch (e: Exception) {
+                        LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}", e)
+                    }
+                }
+            } catch (actionException: Exception) {
+                LOG.error("Ошибке команды ${command.commandName}, сообщение $userMessage", actionException)
+                try {
+                    reply(
+                        to = userMessage,
+                        text = "${errorMessage()}: ${actionException.message}"
+                    )
+                } catch (exception: Exception) {
+                    LOG.error(
+                        "Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage",
+                        exception
+                    )
+                }
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor.ai
+package net.kravuar.vestnik.processor.nodes
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity

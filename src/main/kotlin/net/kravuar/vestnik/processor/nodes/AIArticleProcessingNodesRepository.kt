@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor.ai
+package net.kravuar.vestnik.processor.nodes
 
 import net.kravuar.vestnik.source.Source
 import org.springframework.data.jpa.repository.JpaRepository

@@ -1,13 +1,15 @@
 package net.kravuar.vestnik.articles
 
 import com.apptasticsoftware.rssreader.Item
-import io.ktor.client.utils.EmptyContent.status
 import jakarta.transaction.Transactional
+import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import java.time.Duration
 
-internal class SimpleArticlesFacade(
+internal open class SimpleArticlesFacade(
     private val articlesRepository: ArticlesRepository,
     private val sourcesFacade: SourcesFacade,
 ) : ArticlesFacade {
@@ -22,8 +24,23 @@ internal class SimpleArticlesFacade(
     @Transactional
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
         return sourcesFacade.fetchLatestNews(sourceName, delta).map {
-            itemToArticle(sourcesFacade.getSource(sourceName), it)
+            itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
         }.also { articlesRepository.saveAll(it) }
+    }
+
+    override fun getArticles(): List<Article> {
+        return articlesRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
+    }
+
+    override fun getArticles(page: Int): Page<Article> {
+        return articlesRepository.findAll(PageRequest.of(
+            page - 1,
+            Page.DEFAULT_PAGE_SIZE,
+            Sort.by(Sort.Direction.DESC, "createdAt")
+        )).let { Page(
+            it.totalPages,
+            it.content
+        ) }
     }
 
     override fun getArticle(id: Long): Article {
@@ -33,8 +50,8 @@ internal class SimpleArticlesFacade(
     @Transactional
     override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
         return getArticle(id).apply {
-            input.title.ifPresent { title= it }
-            input.description.ifPresent { description= it }
+            input.title.ifPresent { title = it }
+            input.description.ifPresent { description = it }
             input.url.ifPresent { url = it }
         }
     }

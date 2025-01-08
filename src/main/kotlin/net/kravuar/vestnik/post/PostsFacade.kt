@@ -9,9 +9,10 @@ interface PostsFacade {
         val processedArticle: Optional<ProcessedArticle>,
         val channel: Optional<Channel>,
         val channelPostId: Optional<Long>,
-        val adminId: Optional<String>,
         val isForwarded: Optional<Boolean>,
     )
-    fun getPosts(articleId: Long): List<Post>
+    fun getPost(postId: Long): Post
+    fun getPostsOfArticle(articleId: Long): List<Post>
+    fun existsPostOfProcessedArticleAndChannel(processedArticleId: Long, channelId: Long): Boolean
     fun addPost(postInput: PostInput): Post
 }

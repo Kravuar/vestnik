@@ -1,10 +1,9 @@
 package net.kravuar.vestnik.processor
 
 import jakarta.persistence.EntityManager
-import net.kravuar.vestnik.processor.ai.AIArticleProcessingNodesFacade
-import net.kravuar.vestnik.processor.ai.AIArticleProcessingNodesRepository
-import net.kravuar.vestnik.processor.ai.AIProcessingArticlesFacade
-import net.kravuar.vestnik.processor.ai.SimpleAIArticleProcessingNodesFacade
+import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
+import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesRepository
+import net.kravuar.vestnik.processor.nodes.SimpleAIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import net.kravuar.vestnik.source.SourcesFacade
 import org.springframework.ai.chat.model.ChatModel

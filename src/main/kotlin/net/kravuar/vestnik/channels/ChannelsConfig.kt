@@ -1,6 +1,7 @@
 package net.kravuar.vestnik.channels
 
 import dev.inmo.tgbotapi.bot.TelegramBot
+import net.kravuar.vestnik.post.PostsFacade
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -9,17 +10,25 @@ internal class ChannelsConfig {
     @Bean
     fun channelsFacade(
         channelRepository: ChannelRepository,
-        publishers: List<ChannelPublisher>
+        postsFacade: PostsFacade,
+        publishers: List<PostPublisher>
     ) = SimpleChannelsFacade(
         channelRepository,
+        postsFacade,
         publishers.associateBy { it.platform() }
     )
 
     @Bean
     fun telegramPublisher(
+        postsFacade: PostsFacade,
         telegramBot: TelegramBot
-    ) = TelegramPublisher(telegramBot)
+    ) = TelegramPublisher(
+        postsFacade,
+        telegramBot
+    )
 
     @Bean
-    fun vkPublisher() = VKPublisher()
+    fun vkPublisher(
+        postsFacade: PostsFacade,
+    ) = VKPublisher(postsFacade)
 }

@@ -1,10 +1,8 @@
-package net.kravuar.vestnik.processor.ai
+package net.kravuar.vestnik.processor
 
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.articles.Article
-import net.kravuar.vestnik.processor.ProcessedArticle
-import net.kravuar.vestnik.processor.ProcessedArticleRepository
-import net.kravuar.vestnik.processor.ProcessedArticlesFacade
+import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -14,7 +12,7 @@ import org.springframework.ai.chat.prompt.ChatOptionsBuilder
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.Optional
 
-internal class AIProcessingArticlesFacade(
+internal open class AIProcessingArticlesFacade(
     private val chatModel: ChatModel,
     private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
     private val processedArticleRepository: ProcessedArticleRepository,

@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository
 @Repository
 internal interface PostsRepository: JpaRepository<Post, Long> {
     fun findAllByProcessedArticleArticleId(articleId: Long): List<Post>
+    fun existsPostByProcessedArticleIdAndChannelId(processedArticleId: Long, channelId: Long): Boolean
 }

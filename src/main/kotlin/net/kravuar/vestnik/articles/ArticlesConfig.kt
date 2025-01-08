@@ -7,9 +7,11 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.scheduling.TaskScheduler
 
+
 @Configuration
 internal class ArticlesConfig {
-    @Bean
+
+    @Bean(destroyMethod = "stopPollingAll")
     fun articleScheduler(
         scheduler: TaskScheduler,
         articlesFacade: ArticlesFacade,

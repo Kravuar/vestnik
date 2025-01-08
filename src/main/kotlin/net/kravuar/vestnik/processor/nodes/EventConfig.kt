@@ -1,4 +1,4 @@
-package net.kravuar.vestnik.processor.ai
+package net.kravuar.vestnik.processor.nodes
 
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_MODE
 import net.kravuar.vestnik.commons.EntityEvent

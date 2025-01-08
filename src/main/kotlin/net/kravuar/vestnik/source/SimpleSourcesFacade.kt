@@ -4,33 +4,63 @@ import com.apptasticsoftware.rssreader.Item
 import com.apptasticsoftware.rssreader.RssReader
 import com.apptasticsoftware.rssreader.util.ItemComparator
 import jakarta.transaction.Transactional
+import net.kravuar.vestnik.commons.Page
+import org.springframework.data.domain.PageRequest
 import java.time.Duration
 import java.time.ZonedDateTime
 
-internal class SimpleSourcesFacade(
+internal open class SimpleSourcesFacade(
     private val sourcesRepository: SourcesRepository
-): SourcesFacade {
+) : SourcesFacade {
     private val rssReader = RssReader()
 
     override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
-        with(getSource(sourceName)) {
+        with(getSourceByName(sourceName)) {
             if (suspended == true) {
                 return emptyList()
             }
             return rssReader
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
-                .filter { it.pubDateZonedDateTime.orElseThrow() < ZonedDateTime.now() - delta}
+                .filter { it.pubDateZonedDateTime.orElseThrow() < ZonedDateTime.now() - delta }
                 .toList()
         }
     }
 
     override fun getSources(): List<Source> {
+        return sourcesRepository.findAllByDeletedIsFalse()
+    }
+
+    override fun getSources(page: Int): Page<Source> {
+        return sourcesRepository.findAllByDeletedIsFalse(
+            PageRequest.of(
+                page - 1,
+                Page.DEFAULT_PAGE_SIZE
+            )
+        ).let { Page(
+            it.totalPages,
+            it.content
+        ) }
+    }
+
+    override fun getAllSources(): List<Source> {
         return sourcesRepository.findAll()
     }
 
-    override fun getSource(sourceName: String): Source {
-        return sourcesRepository.findByName(sourceName)
+    override fun getAllSources(page: Int): Page<Source> {
+        return sourcesRepository.findAll(
+            PageRequest.of(
+                page - 1,
+                Page.DEFAULT_PAGE_SIZE
+            )
+        ).let { Page(
+            it.totalPages,
+            it.content
+        ) }
+    }
+
+    override fun getSourceByName(sourceName: String): Source {
+        return sourcesRepository.findByNameAndDeletedIsFalse(sourceName)
     }
 
     @Transactional
@@ -39,30 +69,20 @@ internal class SimpleSourcesFacade(
     }
 
     @Transactional
-    override fun addSources(sources: List<SourcesFacade.SourceInput>): List<Source> {
-        return sourcesRepository.saveAll(sources.map { inputToSource(it) })
-    }
-
-    @Transactional
     override fun updateSource(sourceName: String, input: SourcesFacade.SourceInput): Source {
-        return sourcesRepository.findByName(sourceName).apply {
-            input.url.ifPresent{ this.url = it }
-            input.name.ifPresent{ this.name = it }
-            input.scheduleDelay.ifPresent{ this.scheduleDelay = it }
-            input.contentXPath.ifPresent{ this.contentXPath = it }
-            input.suspended.ifPresent{ this.suspended = it }
-            input.channels.ifPresent{ this.channels = it }
+        return sourcesRepository.findByNameAndDeletedIsFalse(sourceName).apply {
+            input.url.ifPresent { this.url = it }
+            input.name.ifPresent { this.name = it }
+            input.scheduleDelay.ifPresent { this.scheduleDelay = it }
+            input.contentXPath.ifPresent { this.contentXPath = it }
+            input.suspended.ifPresent { this.suspended = it }
+            input.channels.ifPresent { this.channels = it }
         }
     }
 
     @Transactional
     override fun deleteSource(sourceName: String): Source {
         return sourcesRepository.deleteByName(sourceName)
-    }
-
-    @Transactional
-    override fun deleteSources(sourceNames: List<String>): List<Source> {
-        return sourceNames.map { deleteSource(it) }
     }
 
     companion object {
@@ -73,8 +93,8 @@ internal class SimpleSourcesFacade(
                 sourceInput.scheduleDelay.orElse(null),
                 sourceInput.contentXPath.orElse(null),
             ).apply {
-                sourceInput.suspended.ifPresent{ this.suspended = it }
-                sourceInput.channels.ifPresent{ this.channels = it }
+                sourceInput.suspended.ifPresent { this.suspended = it }
+                sourceInput.channels.ifPresent { this.channels = it }
             }
         }
     }

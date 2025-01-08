@@ -1,17 +1,54 @@
 package net.kravuar.vestnik.channels
 
+import com.google.common.util.concurrent.Striped
 import jakarta.transaction.Transactional
+import net.kravuar.vestnik.commons.Page
+import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
+import org.springframework.data.domain.PageRequest
+import kotlin.concurrent.withLock
 
-internal class SimpleChannelsFacade(
+internal open class SimpleChannelsFacade(
     private val channelRepository: ChannelRepository,
-    private val publishers: Map<ChannelPlatform, ChannelPublisher>
-): ChannelsFacade {
+    private val postsFacade: PostsFacade,
+    private val publishers: Map<ChannelPlatform, PostPublisher>
+) : ChannelsFacade {
+    private val locks = Striped.lazyWeakLock(7)
 
-    override fun getChannel(id: String): Channel {
-        return channelRepository
-            .findById(id)
-            .orElseThrow { IllegalArgumentException("Канал с id=$id не найден") }
+    override fun getChannels(): List<Channel> {
+        return channelRepository.findAllByDeletedIsFalse()
+    }
+
+    override fun getChannels(page: Int): Page<Channel> {
+        return channelRepository.findAllByDeletedIsFalse(
+            PageRequest.of(
+                page - 1,
+                Page.DEFAULT_PAGE_SIZE
+            )
+        ).let {
+            Page(
+                it.totalPages,
+                it.content
+            )
+        }
+    }
+
+    override fun getAllChannels(): List<Channel> {
+        return channelRepository.findAll()
+    }
+
+    override fun getAllChannels(page: Int): Page<Channel> {
+        return channelRepository.findAll(
+            PageRequest.of(
+                page - 1,
+                Page.DEFAULT_PAGE_SIZE
+            )
+        ).let {
+            Page(
+                it.totalPages,
+                it.content
+            )
+        }
     }
 
     override fun getChannelByName(name: String): Channel {
@@ -19,21 +56,19 @@ internal class SimpleChannelsFacade(
             .findByName(name)
     }
 
-    override fun getAllChannels(): List<Channel> {
-        return channelRepository.findAll()
+    @Transactional
+    override fun addChannel(input: ChannelsFacade.ChannelInput): Channel {
+        return channelRepository.save(
+            Channel(
+                input.id.orElseThrow { IllegalArgumentException("При создании канала id обязательно") },
+                input.name.orElseThrow { IllegalArgumentException("При создании канала имя обязательно") },
+                input.platform.orElseThrow { IllegalArgumentException("При создании канала платформа обязательно") },
+            ).apply {
+                input.sources.ifPresent { sources = it }
+            })
     }
 
     @Transactional
-    override fun addChannel(input: ChannelsFacade.ChannelInput): Channel {
-        return channelRepository.save(Channel(
-            input.id.orElseThrow { IllegalArgumentException("При создании канала id обязательно") },
-            input.name.orElseThrow { IllegalArgumentException("При создании канала имя обязательно") },
-            input.platform.orElseThrow { IllegalArgumentException("При создании канала платформа обязательно") },
-        ).apply {
-            input.sources.ifPresent { sources = it }
-        })
-    }
-
     override fun deleteChannel(name: String): Channel {
         return channelRepository.deleteByName(name)
     }
@@ -43,12 +78,44 @@ internal class SimpleChannelsFacade(
         primaryChannel: Channel,
         forwardChannels: Collection<Channel>
     ) {
-        val primaryPublisher = publishers[primaryChannel.platform] ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
-        val messageId = primaryPublisher.publish(processedArticle, primaryChannel)
+        require(forwardChannels.none { it.id == primaryChannel.id }) {
+            "В каналах для Forwarding'а указан первичный канал"
+        }
 
-        forwardChannels.forEach {
-            val forwardPublisher = publishers[it.platform] ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
-            forwardPublisher.forward(primaryChannel, messageId, it)
+        val articleId = requireNotNull(processedArticle.article.id) {
+            "Для публикуемой статьи ID статьи источника не может отсутствовать"
+        }
+        val lock = locks.get(articleId)
+
+        // Do not allow many publications of same article at a time
+        lock.withLock {
+            // Check that it is not already posted in specified channels
+            val currentChannelsByIds = listOf(
+                primaryChannel,
+                *forwardChannels.toTypedArray()
+            ).associateBy { it.id }
+            val postedChannelsByIds = postsFacade
+                .getPostsOfArticle(articleId)
+                .map { it.channel }
+                .associateBy { it.id }
+
+            val intersectionChannels = currentChannelsByIds.keys.intersect(postedChannelsByIds.keys)
+                .map { currentChannelsByIds[it]!! }
+            require(intersectionChannels.isEmpty()) {
+                "Новость уже опубликована в следующих каналах: ${intersectionChannels.joinToString { it.name }}"
+            }
+
+            // Post article to primary, then forward to specified channels. Each action in separate transaction
+
+            val primaryPublisher = publishers[primaryChannel.platform]
+                ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
+            val primaryPost = primaryPublisher.publish(processedArticle, primaryChannel)
+
+            forwardChannels.forEach {
+                val forwardPublisher = publishers[it.platform]
+                    ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
+                forwardPublisher.forward(primaryChannel, primaryPost.id!!, it)
+            }
         }
     }
 }
