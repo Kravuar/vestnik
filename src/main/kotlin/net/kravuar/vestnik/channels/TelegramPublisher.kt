@@ -9,7 +9,7 @@ import kotlinx.coroutines.runBlocking
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
 
-internal class TelegramPublisher(
+internal open class TelegramPublisher(
     postsFacade: PostsFacade,
     private val telegramBot: TelegramBot
 ) : AbstractPostPublisher(postsFacade) {

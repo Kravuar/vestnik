@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
 
 @Configuration
-internal class EventConfig(
+internal class ArticleProcessorEventConfig(
     private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
 ) {
 

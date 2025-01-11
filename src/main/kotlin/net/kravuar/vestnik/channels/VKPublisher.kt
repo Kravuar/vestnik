@@ -3,7 +3,7 @@ package net.kravuar.vestnik.channels
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
 
-internal class VKPublisher(
+internal open class VKPublisher(
     postsFacade: PostsFacade
 ) : AbstractPostPublisher(postsFacade) {
 

@@ -8,6 +8,9 @@ import org.springframework.web.reactive.function.client.WebClient
 @Configuration
 internal class ScrapperConfig {
     @Bean
+    fun webClient(): WebClient = WebClient.create()
+
+    @Bean
     fun scrapper(
         @Value("\${bright.data.token}") token: String,
         @Value("\${bright.data.zone}") zone: String,

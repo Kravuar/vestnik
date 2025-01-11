@@ -26,7 +26,6 @@ interface AIArticleProcessingNode {
 ])
 class ChainedAIArticleProcessingNode(
     @ManyToOne(optional = false)
-    @Column(nullable = false, updatable = false)
     var source: Source,
     @Column(nullable = false)
     @NotBlank

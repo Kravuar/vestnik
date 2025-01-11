@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
 
 @Configuration
-internal class EventConfig(
+internal class ArticlePollerEventConfig(
     private val articleScheduler: ArticleScheduler
 ) {
 

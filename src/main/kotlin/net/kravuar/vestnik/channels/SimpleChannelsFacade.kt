@@ -8,7 +8,6 @@ import net.kravuar.vestnik.processor.ProcessedArticle
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import kotlin.concurrent.withLock
-import kotlin.jvm.optionals.getOrElse
 
 internal open class SimpleChannelsFacade(
     private val channelRepository: ChannelRepository,

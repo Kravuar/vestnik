@@ -12,7 +12,6 @@ import java.time.OffsetDateTime
 @Entity
 class Article(
     @ManyToOne(optional = false)
-    @Column(updatable = false)
     var source: Source,
     @Column(nullable = false)
     var title: String,

@@ -1,5 +1,6 @@
 package net.kravuar.vestnik.assistant
 
+import dev.inmo.micro_utils.common.alsoIfFalse
 import dev.inmo.micro_utils.coroutines.subscribeSafelyWithoutExceptions
 import dev.inmo.tgbotapi.bot.TelegramBot
 import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
@@ -47,6 +48,7 @@ import dev.inmo.tgbotapi.utils.row
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import korlibs.time.days
 import korlibs.time.minutes
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -88,10 +90,14 @@ internal class TelegramAssistantFacade(
     private val admins: Set<UserId> = adminsIds.map { UserId(RawChatId(it)) }.toSet()
     private val owner: UserId = UserId(RawChatId(ownerId))
     private val adminMessageFilter = SimpleFilter<CommonMessage<*>> {
-        it.chat.id == adminChannel && it.withUserOrThrow().user.id in admins
+        (it.chat.id == adminChannel && it.withUserOrThrow().user.id in admins).alsoIfFalse {
+            LOG.info("Сообщение не прошло проверку безопасности: $it")
+        }
     }
     private val adminCallbackFilter = SimpleFilter<MessageCallbackQuery> {
-        it.message.chat.id == adminChannel && it.withUserOrThrow().user.id in admins
+        (it.message.chat.id == adminChannel && it.withUserOrThrow().user.id in admins).alsoIfFalse {
+            LOG.info("Callback не прошёл проверку безопасности: $it")
+        }
     }
 
     private data class MessageWithReplyMarkup(
@@ -104,35 +110,39 @@ internal class TelegramAssistantFacade(
         val description: String,
         val args: List<Arg>,
     ) {
-        SHOW_SOURCES("showSources", "Показать список источников", emptyList()),
-        SHOW_SOURCE("showSource", "Показать источник", listOf()),
-        ADD_SOURCE("addSource", "Добавить источник", emptyList()),
-        DELETE_SOURCE("deleteSource", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
-        UPDATE_SOURCE("updateSource", "Обновить источник", emptyList()),
-        SHOW_CHANNELS("showChannels", "Показать список каналов", emptyList()),
-        ADD_CHANNEL("addChannel", "Добавить канал", emptyList()),
-        DELETE_CHANNEL("deleteChannel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
-        SHOW_CHAINS("showChains", "Показать цепочки обработки статей", emptyList()),
-        SHOW_MODES("showModes", "Показать режимы обработки статей для источника", listOf(Arg("name", "Имя источника"))),
+        SHOW_SOURCES("show_sources", "Показать список источников", emptyList()),
+        SHOW_SOURCE("show_source", "Показать источник", listOf()),
+        ADD_SOURCE("add_source", "Добавить источник", emptyList()),
+        DELETE_SOURCE("delete_source", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
+        UPDATE_SOURCE("update_source", "Обновить источник", emptyList()),
+        SHOW_CHANNELS("show_channels", "Показать список каналов", emptyList()),
+        ADD_CHANNEL("add_channel", "Добавить канал", emptyList()),
+        DELETE_CHANNEL("delete_channel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
+        SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", emptyList()),
+        SHOW_MODES(
+            "show_modes",
+            "Показать режимы обработки статей для источника",
+            listOf(Arg("name", "Имя источника"))
+        ),
         SHOW_CHAIN(
-            "showChain",
+            "show_chain",
             "Показать конкретную цепочку",
             listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
         ),
         ADD_CHAIN(
-            "addChain",
+            "add_chain",
             "Добавить цепочку обработки статьи",
             listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
         ),
         DELETE_CHAIN(
-            "deleteChain",
+            "delete_chain",
             "Удалить цепочку обработки статьи",
             listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
         ),
-        ADD_NODE("addNode", "Добавить узел после указанного узла", emptyList()),
-        DELETE_NODE("deleteNode", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
-        UPDATE_NODE("updateNode", "Обновить узел обработки статьи", emptyList()),
-        SHOW_COMMANDS("showCommands", "Показать список команд", emptyList());
+        ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
+        DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
+        UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList()),
+        SHOW_COMMANDS("show_commands", "Показать список команд", emptyList());
 
         data class Arg(
             val name: String,
@@ -140,7 +150,7 @@ internal class TelegramAssistantFacade(
         )
     }
 
-    internal suspend fun start() {
+    internal suspend fun start(): Job {
         val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
             bot.send(
                 chatId = adminChannel,
@@ -724,7 +734,11 @@ internal class TelegramAssistantFacade(
                 Command.entries.map { command ->
                     BotCommand(
                         command.commandName,
-                        "${command.description}, аргументы: ${command.args.joinToString(", ") { it.description }}"
+                        command.description + if (command.args.isNotEmpty()) {
+                            "аргументы: ${command.args.joinToString(", ") { it.description }}"
+                        } else {
+                            ""
+                        }
                     )
                 },
                 scope = BotCommandScope.Chat(adminChannel)
@@ -734,7 +748,7 @@ internal class TelegramAssistantFacade(
                 LOG.debug(it)
             }
         }
-        bot.longPolling(behaviour)
+        return bot.longPolling(behaviour)
     }
 
     private suspend fun <BS : BehaviourContext> BS.processedArticleHandling(processedArticle: ProcessedArticle) {
@@ -797,7 +811,9 @@ internal class TelegramAssistantFacade(
                                 getSelectChannelId(
                                     waitMessageDataCallbackQuery()
                                         .filter {
-                                            it.message.sameMessage(primaryChannelSelectionMessage) && adminCallbackFilter.invoke(it)
+                                            it.message.sameMessage(primaryChannelSelectionMessage) && adminCallbackFilter.invoke(
+                                                it
+                                            )
                                         }.first().data
                                 )
                             ]
@@ -892,7 +908,9 @@ internal class TelegramAssistantFacade(
 
         // Handle regenerate requests
         val processedArticleRegenerateHandlerJob = waitTextMessage().filter {
-            it.replyTo?.sameMessage(processedArticleMessage) ?: false && it.content.text.isNotBlank() && adminMessageFilter.invoke(it)
+            it.replyTo?.sameMessage(processedArticleMessage) ?: false && it.content.text.isNotBlank() && adminMessageFilter.invoke(
+                it
+            )
         }.subscribeSafelyWithoutExceptions(this) { textMessage ->
             launch {
                 // Launch parallel processing of regenerated article
