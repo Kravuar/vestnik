@@ -85,7 +85,9 @@ internal open class SimpleChannelsFacade(
         primaryChannel: Channel,
         forwardChannels: Collection<Channel>
     ) {
-        LOG.info("Публикация статьи: $processedArticle, в каналы: ${primaryChannel.name} -> ${forwardChannels.joinToString { it.name }}")
+        LOG.info("Публикация статьи: $processedArticle, в канал ${primaryChannel.name}" + if (forwardChannels.isNotEmpty()) {
+            " с forward в: ${forwardChannels.joinToString { it.name }}"
+        } else {""})
         require(forwardChannels.none { it.id == primaryChannel.id }) {
             "В каналах для Forwarding'а указан первичный канал"
         }

@@ -3,13 +3,13 @@ package net.kravuar.vestnik.assistant
 import dev.inmo.micro_utils.common.alsoIfFalse
 import dev.inmo.micro_utils.coroutines.subscribeSafelyWithoutExceptions
 import dev.inmo.tgbotapi.bot.TelegramBot
+import dev.inmo.tgbotapi.bot.exceptions.MessageIsNotModifiedException
 import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
 import dev.inmo.tgbotapi.extensions.api.edit.reply_markup.editMessageReplyMarkup
 import dev.inmo.tgbotapi.extensions.api.edit.text.editMessageText
 import dev.inmo.tgbotapi.extensions.api.files.downloadFileStream
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.api.send.send
-import dev.inmo.tgbotapi.extensions.api.send.sendMessage
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.buildBehaviour
 import dev.inmo.tgbotapi.extensions.behaviour_builder.expectations.waitAnyContentMessage
@@ -22,6 +22,8 @@ import dev.inmo.tgbotapi.extensions.behaviour_builder.utils.SimpleFilter
 import dev.inmo.tgbotapi.extensions.utils.extensions.sameMessage
 import dev.inmo.tgbotapi.extensions.utils.formatting.boldHTML
 import dev.inmo.tgbotapi.extensions.utils.formatting.hashTagHTML
+import dev.inmo.tgbotapi.extensions.utils.formatting.italicHTML
+import dev.inmo.tgbotapi.extensions.utils.formatting.strikethroughHTML
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.extensions.utils.updates.retrieving.longPolling
@@ -32,18 +34,19 @@ import dev.inmo.tgbotapi.types.RawChatId
 import dev.inmo.tgbotapi.types.UserId
 import dev.inmo.tgbotapi.types.buttons.InlineKeyboardMarkup
 import dev.inmo.tgbotapi.types.commands.BotCommandScope
-import dev.inmo.tgbotapi.types.message.HTMLParseMode
+import dev.inmo.tgbotapi.types.message.HTML
+import dev.inmo.tgbotapi.types.message.abstracts.AccessibleMessage
 import dev.inmo.tgbotapi.types.message.abstracts.CommonMessage
 import dev.inmo.tgbotapi.types.message.abstracts.ContentMessage
 import dev.inmo.tgbotapi.types.message.content.MediaContent
 import dev.inmo.tgbotapi.types.message.content.MediaGroupContent
+import dev.inmo.tgbotapi.types.message.content.MessageContent
 import dev.inmo.tgbotapi.types.message.content.PhotoContent
 import dev.inmo.tgbotapi.types.message.content.TextContent
 import dev.inmo.tgbotapi.types.message.content.TextMessage
 import dev.inmo.tgbotapi.types.message.content.VideoContent
 import dev.inmo.tgbotapi.types.queries.callback.MessageCallbackQuery
 import dev.inmo.tgbotapi.utils.PreviewFeature
-import dev.inmo.tgbotapi.utils.newLine
 import dev.inmo.tgbotapi.utils.row
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import korlibs.time.days
@@ -152,16 +155,25 @@ internal class TelegramAssistantFacade(
 
     internal suspend fun start(): Job {
         val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
-            bot.send(
-                chatId = adminChannel,
-                text = it.message ?: "Произошла ошибка: $it"
-            )
+            when (it) {
+                is MessageIsNotModifiedException -> {
+                    LOG.warn("Ошибка модификации сообщения", it)
+                }
+
+                else -> {
+                    bot.send(
+                        chatId = adminChannel,
+                        text = it.message ?: "Произошла непредвиденная ошибка: $it"
+                    )
+                }
+            }
         }) {
 
             // MAIN PROCESS ARTICLE HANDLER
             onMessageDataCallbackQuery(
                 dataRegex = PROCESS_ARTICLE_REGEX,
-                initialFilter = adminCallbackFilter
+                initialFilter = adminCallbackFilter,
+                markerFactory = null,
             ) { processCallback ->
                 val data = processCallback.data.substringAfter("_")
                 val (mode, id) = getProcessArticleData(data)
@@ -180,7 +192,8 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.SHOW_SOURCES.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 val pageSupplier = { page: Int ->
                     val sources = sourcesFacade.getSources(page)
@@ -196,10 +209,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        """Список источников:
-
-                        $sourcesAsString
-                        """,
+                        "Список источников:" +
+                                "\n" +
+                                sourcesAsString,
                         paginationMarkup(page, sources.totalPages)
                     )
                 }
@@ -211,10 +223,10 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     { _, message, callback ->
                         val page = pageSupplier(callback.toInt())
-                        editMessageText(
+                        edit(
                             message = message,
                             text = page.message,
-                            replyMarkup = page.replyMarkup
+                            markup = page.replyMarkup
                         )
                     }
                 )
@@ -222,7 +234,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.SHOW_SOURCE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.SHOW_SOURCE,
@@ -244,10 +257,9 @@ internal class TelegramAssistantFacade(
                                 "Приостановлен" to source.suspended,
                             )
                         )
-                        """Источник ${argsByName["name"]!!}:
-
-                        $sourceAsString
-                        """
+                        "Источник ${argsByName["name"]!!}:" +
+                                "\n" +
+                                sourceAsString
                     },
                     { argsByName -> "Не удалось найти источник ${argsByName["name"]!!}" }
                 )
@@ -255,26 +267,24 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.ADD_SOURCE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 handleFormCommand(
                     Command.ADD_SOURCE,
                     userMessage,
-                    """Введите следующие данные для добавления источника:
-
-                    ${
-                        writeForMessage(
-                            mapOf(
-                                "name" to "Имя",
-                                "url" to "URL",
-                                "schedule" to "Периодичность (в минутах)",
-                                "xpath" to "XPATH к контенту",
-                                "channels" to "Целевые каналы (имена через запятую)",
-                                "suspended" to "Приостановлен (опционально)",
-                            )
-                        )
-                    }
-                    """,
+                    "Введите следующие данные для добавления источника:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "name" to "Имя",
+                                    "url" to "URL",
+                                    "schedule" to "Периодичность (в минутах)",
+                                    "xpath" to "XPATH к контенту",
+                                    "channels" to "Целевые каналы (имена через запятую)",
+                                    "suspended" to "Приостановлен (опционально)",
+                                )
+                            ),
                     { input ->
                         sourcesFacade.addSource(SourcesFacade.SourceInput().apply {
                             input["name"]?.let {
@@ -306,27 +316,25 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.UPDATE_SOURCE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 handleFormCommand(
                     Command.UPDATE_SOURCE,
                     userMessage,
-                    """Введите необходимые данные для обновления источника:
-
-                    ${
-                        writeForMessage(
-                            mapOf(
-                                "currentName" to "Имя обновляемого источника (обязательно)",
-                                "newName" to "Имя",
-                                "url" to "URL",
-                                "schedule" to "Периодичность (в минутах)",
-                                "xpath" to "XPATH к контенту",
-                                "channels" to "Целевые каналы (имена через запятую)",
-                                "suspended" to "Приостановлен",
-                            )
-                        )
-                    }
-                    """,
+                    "Введите необходимые данные для обновления источника:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "currentName" to "Имя обновляемого источника (обязательно)",
+                                    "newName" to "Имя",
+                                    "url" to "URL",
+                                    "schedule" to "Периодичность (в минутах)",
+                                    "xpath" to "XPATH к контенту",
+                                    "channels" to "Целевые каналы (имена через запятую)",
+                                    "suspended" to "Приостановлен",
+                                )
+                            ),
                     { input ->
                         sourcesFacade.updateSource(
                             requireNotNull(input["currentName"]) { "Не указано имя обновляемого источника" },
@@ -360,7 +368,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.DELETE_SOURCE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.DELETE_SOURCE,
@@ -378,7 +387,8 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.SHOW_CHANNELS.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 val pageSupplier = { page: Int ->
                     val channels = channelsFacade.getChannels(page)
@@ -393,10 +403,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        """Список каналов:
-
-                        $channelsAsString
-                        """,
+                        "Список каналов:" +
+                                "\n" +
+                                channelsAsString,
                         paginationMarkup(page, channels.totalPages)
                     )
                 }
@@ -408,10 +417,10 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     { _, message, callback ->
                         val page = pageSupplier(callback.toInt())
-                        editMessageText(
+                        edit(
                             message = message,
                             text = page.message,
-                            replyMarkup = page.replyMarkup
+                            markup = page.replyMarkup
                         )
                     }
                 )
@@ -419,24 +428,22 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.ADD_CHANNEL.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 handleFormCommand(
                     Command.ADD_CHANNEL,
                     userMessage,
-                    """Введите следующие данные для добавления канала:
-
-                    ${
-                        writeForMessage(
-                            mapOf(
-                                "id" to "ID канала",
-                                "name" to "Имя канала",
-                                "platform" to "Платформа (${ChannelPlatform.entries.joinToString("/") { it.name }})",
-                                "sources" to "Источники (имена через запятую)",
-                            )
-                        )
-                    }
-                    """,
+                    "Введите следующие данные для добавления канала:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "id" to "ID канала",
+                                    "name" to "Имя канала",
+                                    "platform" to "Платформа (${ChannelPlatform.entries.joinToString("/") { it.name }})",
+                                    "sources" to "Источники (имена через запятую)",
+                                )
+                            ),
                     { input ->
                         channelsFacade.addChannel(ChannelsFacade.ChannelInput().apply {
                             input["name"]?.let {
@@ -462,7 +469,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.DELETE_CHANNEL.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.DELETE_CHANNEL,
@@ -480,7 +488,8 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.SHOW_CHAINS.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 val pageSupplier = { page: Int ->
                     val chains = aiArticleProcessingNodesFacade.getChains(page)
@@ -493,10 +502,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        """Список цепочек обработки новости:
-
-                        $chainsAsString
-                        """,
+                        "Список цепочек обработки новости:" +
+                                "\n" +
+                                chainsAsString,
                         paginationMarkup(page, chains.totalPages)
                     )
                 }
@@ -508,10 +516,10 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     { _, message, callback ->
                         val page = pageSupplier(callback.toInt())
-                        editMessageText(
+                        edit(
                             message = message,
                             text = page.message,
-                            replyMarkup = page.replyMarkup
+                            markup = page.replyMarkup
                         )
                     }
                 )
@@ -519,7 +527,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.SHOW_MODES.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 val pageSupplier = { sourceName: String, page: Int ->
                     val modes = aiArticleProcessingNodesFacade.getModes(
@@ -546,10 +555,10 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     { argsByName, message, callback ->
                         val page = pageSupplier(argsByName["name"]!!, callback.toInt())
-                        editMessageText(
+                        edit(
                             message = message,
                             text = page.message,
-                            replyMarkup = page.replyMarkup
+                            markup = page.replyMarkup
                         )
                     }
                 )
@@ -557,7 +566,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.SHOW_CHAIN.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.SHOW_CHAIN,
@@ -581,10 +591,9 @@ internal class TelegramAssistantFacade(
                                 "Размер промпта" to it.prompt.length,
                             )
                         })
-                        """Цепочка для источника ${argsByName["sourceName"]!!}, режима ${argsByName["mode"]!!} (${chainAsString.length} узлов):
-
-                        $chainAsString
-                        """
+                        "Цепочка для источника ${argsByName["sourceName"]!!}, режима ${argsByName["mode"]!!} (${chainAsString.length} узлов):" +
+                                "\n" +
+                                chainAsString
                     },
                     { argsByName -> "Не удалось найти источник ${argsByName["name"]!!}" }
                 )
@@ -592,7 +601,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.ADD_CHAIN.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.ADD_CHAIN,
@@ -613,7 +623,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.DELETE_CHAIN.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.DELETE_CHAIN,
@@ -634,24 +645,22 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.ADD_NODE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 handleFormCommand(
                     Command.ADD_NODE,
                     userMessage,
-                    """Введите следующие данные для добавления узла:
-
-                    ${
-                        writeForMessage(
-                            mapOf(
-                                "prevNodeId" to "ID предыдущего узла (Обязательно)",
-                                "model" to "Модель узла (По умолчанию: - ${Constants.DEFAULT_MODEL})",
-                                "temperature" to "Температура узла (По умолчанию: - ${Constants.DEFAULT_TEMPERATURE})",
-                                "prompt" to "Промпт узла (Обязательно)",
-                            )
-                        )
-                    }
-                    """,
+                    "Введите следующие данные для добавления узла:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "prevNodeId" to "ID предыдущего узла (Обязательно)",
+                                    "model" to "Модель узла (По умолчанию: - ${Constants.DEFAULT_MODEL})",
+                                    "temperature" to "Температура узла (По умолчанию: - ${Constants.DEFAULT_TEMPERATURE})",
+                                    "prompt" to "Промпт узла (Обязательно)",
+                                )
+                            ),
                     { input ->
                         aiArticleProcessingNodesFacade.insertNode(
                             requireNotNull(input["prevNodeId"]) { "ID предыдущего узла обязателен" }.toLong(),
@@ -674,7 +683,8 @@ internal class TelegramAssistantFacade(
 
             onCommandWithArgs(
                 command = Command.DELETE_NODE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage, args ->
                 handleArgumentCommand(
                     Command.DELETE_NODE,
@@ -692,24 +702,22 @@ internal class TelegramAssistantFacade(
 
             onCommand(
                 command = Command.UPDATE_NODE.commandName,
-                initialFilter = adminMessageFilter
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
             ) { userMessage ->
                 handleFormCommand(
                     Command.UPDATE_NODE,
                     userMessage,
-                    """Введите следующие данные для обновления узла:
-
-                    ${
-                        writeForMessage(
-                            mapOf(
-                                "nodeId" to "ID узла (Обязательно)",
-                                "model" to "Модель узла",
-                                "temperature" to "Температура узла",
-                                "prompt" to "Промпт узла"
-                            )
-                        )
-                    }
-                    """,
+                    "Введите следующие данные для обновления узла:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "nodeId" to "ID узла (Обязательно)",
+                                    "model" to "Модель узла",
+                                    "temperature" to "Температура узла",
+                                    "prompt" to "Промпт узла"
+                                )
+                            ),
                     { input ->
                         aiArticleProcessingNodesFacade.updateNode(
                             requireNotNull(input["nodeId"]) { "ID узла обязателен" }.toLong(),
@@ -735,7 +743,7 @@ internal class TelegramAssistantFacade(
                     BotCommand(
                         command.commandName,
                         command.description + if (command.args.isNotEmpty()) {
-                            "аргументы: ${command.args.joinToString(", ") { it.description }}"
+                            " аргументы: ${command.args.joinToString(", ") { it.description }}"
                         } else {
                             ""
                         }
@@ -763,10 +771,9 @@ internal class TelegramAssistantFacade(
         // Creating processed article message
         val processedArticleMessage = send(
             chatId = adminChannel,
-            replyMarkup = postReplyMarkup(channels.values, selected),
-        ) {
-            processedArticleMessage(processedArticle)
-        }
+            text = processedArticleMessage(processedArticle),
+            markup = postReplyMarkup(channels.values, selected)
+        )
 
         // Handle interactions with that processed article
         val processedArticleHandlerMainJob = waitMessageDataCallbackQuery().filter {
@@ -781,17 +788,17 @@ internal class TelegramAssistantFacade(
                 // Select channel
                 SELECT_CHANNEL_REGEX.matches(processedArticleCallback.data) -> {
                     selected.add(getSelectChannelId(processedArticleCallback.data))
-                    editMessageReplyMarkup(
+                    edit(
                         message = processedArticleMessage,
-                        replyMarkup = postReplyMarkup(channels.values, selected)
+                        markup = postReplyMarkup(channels.values, selected)
                     )
                 }
                 // Deselect channel
                 DESELECT_CHANNEL_REGEX.matches(processedArticleCallback.data) -> {
                     selected.remove(getDeselectChannelId(processedArticleCallback.data))
-                    editMessageReplyMarkup(
+                    edit(
                         message = processedArticleMessage,
-                        replyMarkup = postReplyMarkup(channels.values, selected)
+                        markup = postReplyMarkup(channels.values, selected)
                     )
                 }
                 // Post article
@@ -803,10 +810,9 @@ internal class TelegramAssistantFacade(
                     // Select primary channel message
                     val primaryChannelSelectionMessage = send(
                         chatId = adminChannel,
-                        replyMarkup = primaryChannelSelectionReplyMarkup(selectedChannels)
-                    ) {
-                        primaryChannelSelectionMessage()
-                    }
+                        text = primaryChannelSelectionMessage(),
+                        markup = primaryChannelSelectionReplyMarkup(selectedChannels)
+                    )
 
                     coroutineScope {
                         // Primary channel selection handling
@@ -828,10 +834,9 @@ internal class TelegramAssistantFacade(
                         val mediaList = mutableListOf<InputStream>()
                         val finalPostMessage = send(
                             chatId = adminChannel,
-                            replyMarkup = finalPostActionReplyMarkup(postDelay)
-                        ) {
-                            finalPostActionMessage(mediaList.size)
-                        }
+                            text = finalPostActionMessage(0),
+                            markup = finalPostActionReplyMarkup(postDelay)
+                        )
 
                         // Handle media attachment
                         waitAnyContentMessage().filter {
@@ -863,11 +868,10 @@ internal class TelegramAssistantFacade(
                             })
 
                             // Update message
-                            editMessageText(
-                                message = finalPostMessage
-                            ) {
-                                finalPostActionMessage(mediaList.size)
-                            }
+                            edit(
+                                message = finalPostMessage,
+                                text = finalPostActionMessage(mediaList.size)
+                            )
                         }
 
                         // Handle delay adjustment/final post action
@@ -877,12 +881,11 @@ internal class TelegramAssistantFacade(
                             if (DELAY_DELTA_REGEX.matches(delaySelectionCallback.data)) {
                                 val deltaMinutes = delaySelectionCallback.data.toInt()
                                 postDelay = postDelay.plus(deltaMinutes.minutes)
-                                editMessageText(
+                                edit(
                                     message = finalPostMessage,
-                                    replyMarkup = finalPostActionReplyMarkup(postDelay)
-                                ) {
-                                    finalPostActionMessage(mediaList.size)
-                                }
+                                    text = finalPostActionMessage(mediaList.size),
+                                    markup = finalPostActionReplyMarkup(postDelay)
+                                )
                             }
                         }.filter { delaySelectionCallback ->
                             delaySelectionCallback.data == postCallbackData()
@@ -898,9 +901,10 @@ internal class TelegramAssistantFacade(
                             .filter { it != primaryChannel }
                         channelsFacade.postArticle(processedArticle, primaryChannel, forwardChannels)
 
-                        reply(to = primaryChannelSelectionMessage) {
-                            articlePostedMessage(processedArticle, primaryChannel, forwardChannels)
-                        }
+                        reply(
+                            message = primaryChannelSelectionMessage,
+                            text = articlePostedMessage(processedArticle, primaryChannel, forwardChannels)
+                        )
                     }
                 }
 
@@ -933,23 +937,21 @@ internal class TelegramAssistantFacade(
                     "id=${processedArticle.id}, " +
                     "messageId=${processedArticleMessage.messageId} завершён"
         )
-        editMessageText(
+        edit(
             message = processedArticleMessage,
-        ) {
-            "[УСТАРЕЛО]".boldHTML() +
-                    newLine +
+            text = "[УСТАРЕЛО]".boldHTML() +
+                    "\n" +
                     processedArticleMessage(processedArticle)
-        }
+        )
     }
 
     override fun notifyNewArticle(article: Article) {
         runBlocking {
             val id = requireNotNull(article.id) { "ID обрабатываемой статьи не может отсутствовать." }
-            bot.sendMessage(
+            bot.send(
                 chatId = adminChannel,
-                replyMarkup = articleReplyMarkup(id, processedArticlesFacade.getModes(article)),
                 text = newArticleMessage(article),
-                parseMode = HTMLParseMode
+                markup = articleReplyMarkup(id, processedArticlesFacade.getModes(article)),
             )
         }
     }
@@ -957,16 +959,17 @@ internal class TelegramAssistantFacade(
     companion object {
         private val LOG = LogManager.getLogger(TelegramAssistantFacade::class.java)
 
-        private const val SPLIT = "===============\n"
-        private const val SPLIT_INPUT = ":="
+        private const val SPLIT_INPUT = "="
+        private val SPLIT = "===============================================".strikethroughHTML() + "\n"
         private val ARTICLE_LIFETIME = 3.days
         private val COMMAND_LIFETIME = 5.minutes
+        private val DEFAULT_PARSE_MODE = HTML
 
         //
         // PARSING/FORMATTING
         //
 
-        private val INPUT_REGEX = Regex("^(\\S+)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
+        private val INPUT_REGEX = Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
         private fun parseStringToMap(input: String): Map<String, String> {
 
             val map = mutableMapOf<String, String>()
@@ -985,9 +988,10 @@ internal class TelegramAssistantFacade(
         private fun writeForMessage(pair: Pair<String, Any?>): String {
             return StringBuilder()
                 .append(pair.first.boldHTML())
+                .append(" ")
                 .append(SPLIT_INPUT)
-                .append(pair.second.toString().boldHTML())
-                .appendLine()
+                .append(" ")
+                .append(pair.second.toString().italicHTML())
                 .toString()
         }
 
@@ -1133,13 +1137,13 @@ internal class TelegramAssistantFacade(
             val next = (currentPage + 1).toString()
             return inlineKeyboard {
                 row {
-                    if (currentPage - 1 != 1) {
+                    if (currentPage - 1 > 1) {
                         dataButton("<< 1", "1")
+                        dataButton(prev, prev)
                     }
-                    dataButton(prev, prev)
                     dataButton(current, current)
-                    dataButton(next, next)
-                    if (currentPage + 1 != totalPages) {
+                    if (currentPage + 1 <= totalPages) {
+                        dataButton(next, next)
                         dataButton(">> $totalPages", totalPages.toString())
                     }
                 }
@@ -1214,7 +1218,7 @@ internal class TelegramAssistantFacade(
             val argsAsMap = args?.let {
                 if (command.args.size != it.size) {
                     reply(
-                        to = userMessage,
+                        message = userMessage,
                         text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
                     )
                 }
@@ -1227,9 +1231,9 @@ internal class TelegramAssistantFacade(
             // Send initial message
             val messageWithReplyMarkup = replyMessageInit.invoke(argsAsMap)
             val initialMessage = reply(
-                to = userMessage,
+                message = userMessage,
                 text = messageWithReplyMarkup.message,
-                replyMarkup = messageWithReplyMarkup.replyMarkup
+                markup = messageWithReplyMarkup.replyMarkup
             )
 
             // Wait for callbacks
@@ -1253,13 +1257,12 @@ internal class TelegramAssistantFacade(
                         "command=${command.commandName}, " +
                         "messageId=${initialMessage.messageId} завершён"
             )
-            editMessageText(
+            edit(
                 message = initialMessage,
-            ) {
-                "[УСТАРЕЛО]".boldHTML() +
-                        newLine +
+                text = "[УСТАРЕЛО]".boldHTML() +
+                        "\n" +
                         initialMessage.content.text
-            }
+            )
         }
 
         private suspend fun <BC : BehaviourContext, T> BC.handleArgumentCommand(
@@ -1272,7 +1275,7 @@ internal class TelegramAssistantFacade(
         ) {
             if (command.args.size != args.size) {
                 reply(
-                    to = userMessage,
+                    message = userMessage,
                     text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
                 )
             }
@@ -1300,7 +1303,7 @@ internal class TelegramAssistantFacade(
         ) {
             // Send form message
             val formMessage = reply(
-                to = userMessage,
+                message = userMessage,
                 text = schemaMessage
             )
 
@@ -1328,13 +1331,12 @@ internal class TelegramAssistantFacade(
                         "command=${command.commandName}, " +
                         "messageId=${formMessage.messageId} завершён"
             )
-            editMessageText(
+            edit(
                 message = formMessage,
-            ) {
-                "[УСТАРЕЛО]".boldHTML() +
-                        newLine +
+                text = "[УСТАРЕЛО]".boldHTML() +
+                        "\n" +
                         formMessage.content.text
-            }
+            )
         }
 
         private suspend fun <BC : BehaviourContext, T> BC.handleCommand(
@@ -1348,7 +1350,7 @@ internal class TelegramAssistantFacade(
                 action().also {
                     try {
                         reply(
-                            to = userMessage,
+                            message = userMessage,
                             text = successMessage(it)
                         )
                     } catch (e: Exception) {
@@ -1359,7 +1361,7 @@ internal class TelegramAssistantFacade(
                 LOG.error("Ошибке команды ${command.commandName}, сообщение $userMessage", actionException)
                 try {
                     reply(
-                        to = userMessage,
+                        message = userMessage,
                         text = "${errorMessage()}: ${actionException.message}"
                     )
                 } catch (exception: Exception) {
@@ -1368,6 +1370,52 @@ internal class TelegramAssistantFacade(
                         exception
                     )
                 }
+            }
+        }
+
+        private suspend fun TelegramBot.send(
+            chatId: ChatId,
+            text: String,
+            markup: InlineKeyboardMarkup? = null
+        ): ContentMessage<TextContent> {
+            return send(
+                chatId = chatId,
+                text = text,
+                replyMarkup = markup,
+                parseMode = DEFAULT_PARSE_MODE
+            )
+        }
+
+        private suspend fun TelegramBot.reply(
+            message: AccessibleMessage,
+            text: String,
+            markup: InlineKeyboardMarkup? = null
+        ): ContentMessage<TextContent> {
+            return reply(
+                to = message,
+                text = text,
+                replyMarkup = markup,
+                parseMode = DEFAULT_PARSE_MODE
+            )
+        }
+
+        private suspend fun TelegramBot.edit(
+            message: ContentMessage<TextContent>,
+            text: String? = null,
+            markup: InlineKeyboardMarkup? = null
+        ): ContentMessage<MessageContent> {
+            return if (text != null) {
+                editMessageText(
+                    message = message,
+                    text = text,
+                    replyMarkup = markup,
+                    parseMode = DEFAULT_PARSE_MODE
+                )
+            } else {
+                editMessageReplyMarkup(
+                    message = message,
+                    replyMarkup = markup
+                )
             }
         }
     }

@@ -68,8 +68,20 @@ internal open class SimpleSourcesFacade(
 
     @Transactional
     override fun addSource(source: SourcesFacade.SourceInput): Source {
-        return sourcesRepository.save(inputToSource(source)).also {
-            LOG.info("Добавлен новый источник: $it, каналы: ${it.channels.joinToString { channel -> channel.name }}")
+        return sourcesRepository.save(
+            Source(
+                source.name.orElseThrow { IllegalArgumentException("Имя источника обязательно") },
+                source.url.orElseThrow { IllegalArgumentException("URL обязателен") },
+                source.scheduleDelay.orElseThrow { IllegalArgumentException("Периодичность источника обязательна") },
+                source.contentXPath.orElseThrow { IllegalArgumentException("XPath к контенту обязателен") },
+            ).apply {
+                source.suspended.ifPresent { this.suspended = it }
+                source.channels.ifPresent { this.channels = it }
+            }
+        ).also {
+            LOG.info("Добавлен новый источник: $it" + if (source.channels.isPresent) {
+                ", каналы: ${it.channels.joinToString { channel -> channel.name }}"
+            } else {""})
         }
     }
 
@@ -96,17 +108,5 @@ internal open class SimpleSourcesFacade(
 
     companion object {
         private val LOG = LogManager.getLogger(SimpleSourcesFacade::class.java)
-
-        private fun inputToSource(sourceInput: SourcesFacade.SourceInput): Source {
-            return Source(
-                sourceInput.name.orElse(null),
-                sourceInput.url.orElse(null),
-                sourceInput.scheduleDelay.orElse(null),
-                sourceInput.contentXPath.orElse(null),
-            ).apply {
-                sourceInput.suspended.ifPresent { this.suspended = it }
-                sourceInput.channels.ifPresent { this.channels = it }
-            }
-        }
     }
 }
