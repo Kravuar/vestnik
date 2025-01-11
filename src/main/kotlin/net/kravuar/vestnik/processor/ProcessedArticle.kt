@@ -5,11 +5,12 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.articles.Article
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.time.OffsetDateTime
 
 @Entity
@@ -17,7 +18,7 @@ class ProcessedArticle(
     @ManyToOne(optional = false)
     var article: Article,
     @Column(nullable = false)
-    @Lob
+    @JdbcTypeCode(SqlTypes.CLOB)
     var content: String,
     @Column(nullable = false)
     @NotBlank

@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.repository.PagingAndSortingRepository
 
 internal interface AIArticleProcessingNodesRepository: PagingAndSortingRepository<ChainedAIArticleProcessingNode, Long>, JpaRepository<ChainedAIArticleProcessingNode, Long> {
-    fun findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source: Source, mode: String): ChainedAIArticleProcessingNode
+    fun findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalse(source: Source, mode: String): ChainedAIArticleProcessingNode
     fun findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(): List<ChainedAIArticleProcessingNode>
     fun findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(pageable: Pageable): Page<ChainedAIArticleProcessingNode>
     fun findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source: Source): List<ChainedAIArticleProcessingNode>

@@ -1,5 +1,6 @@
 package net.kravuar.vestnik.processor.nodes
 
+import com.google.common.util.concurrent.Striped
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
 import jakarta.transaction.Transactional
@@ -9,11 +10,14 @@ import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
+import kotlin.concurrent.withLock
 
 internal open class SimpleAIArticleProcessingNodesFacade(
     private val entityManager: EntityManager,
     private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
 ) : AIArticleProcessingNodesFacade {
+    private val locks = Striped.lazyWeakLock(7)
+
     override fun getChains(): List<AIArticleProcessingNodesFacade.ChainInfo> {
         return aiArticleProcessingNodesRepository
             .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse()
@@ -33,7 +37,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     override fun getChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode> {
         return generateSequence(aiArticleProcessingNodesRepository
-            .findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source, mode)
+            .findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalse(source, mode)
         ) { it.child }.toList()
     }
 
@@ -63,17 +67,21 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         source: Source,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
-        LOG.info("Создание цепочки для источника $source, режим $mode")
-        val rootNode = createInitialRootNode(source, mode)
-        val formattingNode = createInitialFormattingNode(source, mode)
+        val lock = locks.get(Pair(source.id, mode))
 
-        rootNode.child = formattingNode
-        formattingNode.parent = rootNode
+        lock.withLock {
+            LOG.info("Создание цепочки для источника $source, режим $mode")
+            val rootNode = createInitialRootNode(source, mode)
+            val formattingNode = createInitialFormattingNode(source, mode)
 
-        return aiArticleProcessingNodesRepository.saveAll(
-            listOf(rootNode, formattingNode)
-        ).also {
-            LOG.info("Создана цепочка для источника $it")
+            rootNode.child = formattingNode
+            formattingNode.parent = rootNode
+
+            return aiArticleProcessingNodesRepository.saveAll(
+                listOf(rootNode, formattingNode)
+            ).also {
+                LOG.info("Создана цепочка для источника $it")
+            }
         }
     }
 

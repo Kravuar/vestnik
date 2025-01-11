@@ -262,7 +262,7 @@ internal class TelegramAssistantFacade(
                                 "\n" +
                                 sourceAsString
                     },
-                    { argsByName -> "Не удалось найти источник ${argsByName["name"]!!}" }
+                    { _ -> "Не удалось найти источник" }
                 )
             }
 
@@ -382,7 +382,7 @@ internal class TelegramAssistantFacade(
                         )
                     },
                     { _, source -> "Источник ${source.name} удален" },
-                    { argsByName -> "Не удалось удалить источник ${argsByName["name"]!!}" }
+                    { _ -> "Не удалось удалить источник" }
                 )
             }
 
@@ -483,7 +483,7 @@ internal class TelegramAssistantFacade(
                         )
                     },
                     { _, channel -> "Канал ${channel.name} удален" },
-                    { argsByName -> "Не удалось удалить канал ${argsByName["name"]!!}" }
+                    { _ -> "Не удалось удалить канал" }
                 )
             }
 
@@ -598,7 +598,7 @@ internal class TelegramAssistantFacade(
                                 "\n" +
                                 chainAsString
                     },
-                    { argsByName -> "Не удалось найти источник ${argsByName["name"]!!}" }
+                    { _ -> "Не удалось найти цепочку" }
                 )
             }
 

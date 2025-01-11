@@ -5,9 +5,10 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import net.kravuar.vestnik.source.Source
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.time.OffsetDateTime
 
 @Entity
@@ -17,7 +18,7 @@ class Article(
     @Column(nullable = false)
     var title: String,
     @Column(nullable = false)
-    @Lob
+    @JdbcTypeCode(SqlTypes.CLOB)
     var description: String,
     @Column(nullable = false)
     var url: String,
