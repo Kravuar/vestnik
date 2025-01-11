@@ -49,7 +49,6 @@ import dev.inmo.tgbotapi.types.queries.callback.MessageCallbackQuery
 import dev.inmo.tgbotapi.utils.PreviewFeature
 import dev.inmo.tgbotapi.utils.row
 import io.ktor.utils.io.jvm.javaio.toInputStream
-import korlibs.time.days
 import korlibs.time.minutes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -75,6 +74,7 @@ import java.io.InputStream
 import java.util.Optional
 import java.util.function.Predicate
 import kotlin.time.Duration
+import kotlin.time.toKotlinDuration
 
 @OptIn(PreviewFeature::class)
 internal class TelegramAssistantFacade(
@@ -82,6 +82,7 @@ internal class TelegramAssistantFacade(
     adminsIds: Set<Long>,
     ownerId: Long,
     private val bot: TelegramBot,
+    private val config: AssistantProperties,
     private val sourcesFacade: SourcesFacade,
     private val channelsFacade: ChannelsFacade,
     private val articlesFacade: ArticlesFacade,
@@ -757,9 +758,21 @@ internal class TelegramAssistantFacade(
             }
         }
         return bot.longPolling(behaviour).also {
+            LOG.info("Работа ассистента запущена, конфигурация: $config")
             it.invokeOnCompletion {
                 LOG.info("Работа ассистента закончена")
             }
+        }
+    }
+
+    override fun notifyNewArticle(article: Article) {
+        runBlocking {
+            val id = requireNotNull(article.id) { "ID обрабатываемой статьи не может отсутствовать." }
+            bot.send(
+                chatId = adminChannel,
+                text = newArticleMessage(article),
+                markup = articleReplyMarkup(id, processedArticlesFacade.getModes(article)),
+            )
         }
     }
 
@@ -929,7 +942,7 @@ internal class TelegramAssistantFacade(
         }
 
         // Stop article processing after timeout
-        delay(ARTICLE_LIFETIME)
+        delay(config.articleLifeTime.toKotlinDuration())
         processedArticleHandlerMainJob.cancel("Новость устарела")
         processedArticleRegenerateHandlerJob.cancel("Новость устарела")
         LOG.info(
@@ -941,18 +954,178 @@ internal class TelegramAssistantFacade(
             message = processedArticleMessage,
             text = "[УСТАРЕЛО]".boldHTML() +
                     "\n" +
-                    processedArticleMessage(processedArticle)
+                    processedArticleMessage(processedArticle).strikethroughHTML()
         )
     }
 
-    override fun notifyNewArticle(article: Article) {
-        runBlocking {
-            val id = requireNotNull(article.id) { "ID обрабатываемой статьи не может отсутствовать." }
-            bot.send(
-                chatId = adminChannel,
-                text = newArticleMessage(article),
-                markup = articleReplyMarkup(id, processedArticlesFacade.getModes(article)),
+    //
+    // COMMANDS
+    //
+
+    private suspend fun <BC : BehaviourContext> BC.handleCallbackCommand(
+        command: Command,
+        args: Array<String>?,
+        callbackRegex: Predicate<String>,
+        replyMessageInit: (Map<String, String>) -> MessageWithReplyMarkup,
+        userMessage: TextMessage,
+        callback: suspend (Map<String, String>, ContentMessage<TextContent>, String) -> Unit,
+        unknownCallback: ((ContentMessage<TextContent>, String) -> Unit)? = null,
+    ) {
+        val argsAsMap = args?.let {
+            if (command.args.size != it.size) {
+                reply(
+                    message = userMessage,
+                    text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
+                )
+            }
+            it.withIndex().associateBy(
+                { arg -> command.args[arg.index].name },
+                { arg -> arg.value }
             )
+        } ?: emptyMap()
+
+        // Send initial message
+        val messageWithReplyMarkup = replyMessageInit.invoke(argsAsMap)
+        val initialMessage = reply(
+            message = userMessage,
+            text = messageWithReplyMarkup.message,
+            markup = messageWithReplyMarkup.replyMarkup
+        )
+
+        // Wait for callbacks
+        val handleInputJob = launch {
+            waitMessageDataCallbackQuery().filter {
+                it.message.sameMessage(initialMessage)
+            }.subscribeSafelyWithoutExceptions(this) { messageCallback ->
+                if (callbackRegex.test(messageCallback.data)) {
+                    callback(argsAsMap, initialMessage, messageCallback.data)
+                } else {
+                    unknownCallback?.invoke(initialMessage, messageCallback.data)
+                }
+            }
+        }
+
+        // Stop command processing after timeout
+        delay(config.commandLifeTime.toKotlinDuration())
+        handleInputJob.cancel("Обработчик команды устарел")
+        LOG.info(
+            "Процесс для обработки поисковой команды " +
+                    "command=${command.commandName}, " +
+                    "messageId=${initialMessage.messageId} завершён"
+        )
+        edit(
+            message = initialMessage,
+            text = "[УСТАРЕЛО]".boldHTML() +
+                    "\n" +
+                    initialMessage.content.text.strikethroughHTML()
+        )
+    }
+
+    private suspend fun <BC : BehaviourContext, T> BC.handleArgumentCommand(
+        command: Command,
+        userMessage: TextMessage,
+        args: Array<String>,
+        action: (Map<String, String>) -> T,
+        successMessage: (Map<String, String>, T) -> String,
+        errorMessage: (Map<String, String>) -> String
+    ) {
+        if (command.args.size != args.size) {
+            reply(
+                message = userMessage,
+                text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
+            )
+        }
+        val argsAsMap = args.withIndex().associateBy(
+            { command.args[it.index].name },
+            { it.value }
+        )
+
+        handleCommand(
+            command,
+            userMessage,
+            { action(argsAsMap) },
+            { result -> successMessage(argsAsMap, result) },
+            { errorMessage(argsAsMap) }
+        )
+    }
+
+    private suspend fun <BC : BehaviourContext, T> BC.handleFormCommand(
+        command: Command,
+        userMessage: TextMessage,
+        schemaMessage: String,
+        action: (Map<String, String>) -> T,
+        successMessage: (Map<String, String>, T) -> String,
+        errorMessage: (Map<String, String>) -> String
+    ) {
+        // Send form message
+        val formMessage = reply(
+            message = userMessage,
+            text = schemaMessage
+        )
+
+        val handleInputJob = launch {
+            // Wait for reply with input
+            val inputMessage = waitTextMessage().filter {
+                it.replyTo?.sameMessage(formMessage) ?: false
+            }.first()
+            val input = parseStringToMap(inputMessage.content.text)
+
+            handleCommand(
+                command,
+                inputMessage,
+                { action(input) },
+                { result -> successMessage(input, result) },
+                { errorMessage(input) }
+            )
+        }
+
+        // Stop command processing after timeout
+        delay(config.commandLifeTime.toKotlinDuration())
+        handleInputJob.cancel("Обработчик команды устарел")
+        LOG.info(
+            "Процесс для обработки команды " +
+                    "command=${command.commandName}, " +
+                    "messageId=${formMessage.messageId} завершён"
+        )
+        edit(
+            message = formMessage,
+            text = "[УСТАРЕЛО]".boldHTML() +
+                    "\n" +
+                    formMessage.content.text.strikethroughHTML()
+        )
+    }
+
+    private suspend fun <BC : BehaviourContext, T> BC.handleCommand(
+        command: Command,
+        userMessage: TextMessage,
+        action: () -> T,
+        successMessage: (T) -> String,
+        errorMessage: () -> String
+    ) {
+        try {
+            action().also {
+                try {
+                    reply(
+                        message = userMessage,
+                        text = successMessage(it)
+                    )
+                } catch (e: Exception) {
+                    LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}", e)
+                }
+            }
+        } catch (actionException: Exception) {
+            LOG.error("Ошибке команды ${command.commandName}, сообщение $userMessage", actionException)
+            try {
+                reply(
+                    message = userMessage,
+                    text = "${errorMessage()}: ${actionException.message}"
+                )
+            } catch (exception: Exception) {
+                LOG.error(
+                    "Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage",
+                    exception
+                )
+            }
         }
     }
 
@@ -961,8 +1134,6 @@ internal class TelegramAssistantFacade(
 
         private const val SPLIT_INPUT = "="
         private val SPLIT = "===============================================".strikethroughHTML() + "\n"
-        private val ARTICLE_LIFETIME = 3.days
-        private val COMMAND_LIFETIME = 5.minutes
         private val DEFAULT_PARSE_MODE = HTML
 
         //
@@ -1203,175 +1374,8 @@ internal class TelegramAssistantFacade(
         }
 
         //
-        // COMMANDS
+        // UTILS
         //
-
-        private suspend fun <BC : BehaviourContext> BC.handleCallbackCommand(
-            command: Command,
-            args: Array<String>?,
-            callbackRegex: Predicate<String>,
-            replyMessageInit: (Map<String, String>) -> MessageWithReplyMarkup,
-            userMessage: TextMessage,
-            callback: suspend (Map<String, String>, ContentMessage<TextContent>, String) -> Unit,
-            unknownCallback: ((ContentMessage<TextContent>, String) -> Unit)? = null,
-        ) {
-            val argsAsMap = args?.let {
-                if (command.args.size != it.size) {
-                    reply(
-                        message = userMessage,
-                        text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
-                    )
-                }
-                it.withIndex().associateBy(
-                    { arg -> command.args[arg.index].name },
-                    { arg -> arg.value }
-                )
-            } ?: emptyMap()
-
-            // Send initial message
-            val messageWithReplyMarkup = replyMessageInit.invoke(argsAsMap)
-            val initialMessage = reply(
-                message = userMessage,
-                text = messageWithReplyMarkup.message,
-                markup = messageWithReplyMarkup.replyMarkup
-            )
-
-            // Wait for callbacks
-            val handleInputJob = launch {
-                waitMessageDataCallbackQuery().filter {
-                    it.message.sameMessage(initialMessage)
-                }.subscribeSafelyWithoutExceptions(this) { messageCallback ->
-                    if (callbackRegex.test(messageCallback.data)) {
-                        callback(argsAsMap, initialMessage, messageCallback.data)
-                    } else {
-                        unknownCallback?.invoke(initialMessage, messageCallback.data)
-                    }
-                }
-            }
-
-            // Stop command processing after timeout
-            delay(COMMAND_LIFETIME)
-            handleInputJob.cancel("Обработчик команды устарел")
-            LOG.info(
-                "Процесс для обработки поисковой команды " +
-                        "command=${command.commandName}, " +
-                        "messageId=${initialMessage.messageId} завершён"
-            )
-            edit(
-                message = initialMessage,
-                text = "[УСТАРЕЛО]".boldHTML() +
-                        "\n" +
-                        initialMessage.content.text
-            )
-        }
-
-        private suspend fun <BC : BehaviourContext, T> BC.handleArgumentCommand(
-            command: Command,
-            userMessage: TextMessage,
-            args: Array<String>,
-            action: (Map<String, String>) -> T,
-            successMessage: (Map<String, String>, T) -> String,
-            errorMessage: (Map<String, String>) -> String
-        ) {
-            if (command.args.size != args.size) {
-                reply(
-                    message = userMessage,
-                    text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
-                )
-            }
-            val argsAsMap = args.withIndex().associateBy(
-                { command.args[it.index].name },
-                { it.value }
-            )
-
-            handleCommand(
-                command,
-                userMessage,
-                { action(argsAsMap) },
-                { result -> successMessage(argsAsMap, result) },
-                { errorMessage(argsAsMap) }
-            )
-        }
-
-        private suspend fun <BC : BehaviourContext, T> BC.handleFormCommand(
-            command: Command,
-            userMessage: TextMessage,
-            schemaMessage: String,
-            action: (Map<String, String>) -> T,
-            successMessage: (Map<String, String>, T) -> String,
-            errorMessage: (Map<String, String>) -> String
-        ) {
-            // Send form message
-            val formMessage = reply(
-                message = userMessage,
-                text = schemaMessage
-            )
-
-            val handleInputJob = launch {
-                // Wait for reply with input
-                val inputMessage = waitTextMessage().filter {
-                    it.replyTo?.sameMessage(formMessage) ?: false
-                }.first()
-                val input = parseStringToMap(inputMessage.content.text)
-
-                handleCommand(
-                    command,
-                    inputMessage,
-                    { action(input) },
-                    { result -> successMessage(input, result) },
-                    { errorMessage(input) }
-                )
-            }
-
-            // Stop command processing after timeout
-            delay(COMMAND_LIFETIME)
-            handleInputJob.cancel("Обработчик команды устарел")
-            LOG.info(
-                "Процесс для обработки команды " +
-                        "command=${command.commandName}, " +
-                        "messageId=${formMessage.messageId} завершён"
-            )
-            edit(
-                message = formMessage,
-                text = "[УСТАРЕЛО]".boldHTML() +
-                        "\n" +
-                        formMessage.content.text
-            )
-        }
-
-        private suspend fun <BC : BehaviourContext, T> BC.handleCommand(
-            command: Command,
-            userMessage: TextMessage,
-            action: () -> T,
-            successMessage: (T) -> String,
-            errorMessage: () -> String
-        ) {
-            try {
-                action().also {
-                    try {
-                        reply(
-                            message = userMessage,
-                            text = successMessage(it)
-                        )
-                    } catch (e: Exception) {
-                        LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}", e)
-                    }
-                }
-            } catch (actionException: Exception) {
-                LOG.error("Ошибке команды ${command.commandName}, сообщение $userMessage", actionException)
-                try {
-                    reply(
-                        message = userMessage,
-                        text = "${errorMessage()}: ${actionException.message}"
-                    )
-                } catch (exception: Exception) {
-                    LOG.error(
-                        "Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage",
-                        exception
-                    )
-                }
-            }
-        }
 
         private suspend fun TelegramBot.send(
             chatId: ChatId,
