@@ -63,6 +63,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         source: Source,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
+        LOG.info("Создание цепочки для источника $source, режим $mode")
         val rootNode = createInitialRootNode(source, mode)
         val formattingNode = createInitialFormattingNode(source, mode)
 
@@ -81,6 +82,8 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         source: Source,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
+        LOG.info("Удаление цепочки для источника $source, режим $mode")
+
         // Find chain
         val chain = getChain(source, mode)
 
@@ -98,11 +101,14 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         prevNodeId: Long,
         input: AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput
     ): ChainedAIArticleProcessingNode {
+        LOG.info("Добавление узла в цепочку обработки")
+
         // Find existing
         val previousNode = aiArticleProcessingNodesRepository
             .findById(prevNodeId)
             .orElseThrow { IllegalArgumentException("Предшествующий узел с id=${prevNodeId} не найден") }
         val nextNode = previousNode.child
+        LOG.info("Добавление узла $input, идущего за $previousNode")
 
         // Lock them
         entityManager.lock(previousNode, LockModeType.PESSIMISTIC_WRITE)
@@ -135,12 +141,15 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     @Transactional
     override fun deleteNode(nodeId: Long): ChainedAIArticleProcessingNode {
+        LOG.info("Удаление узла $nodeId")
+
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
             .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
         val previousNode = existingNode.parent
         val nextNode = existingNode.child
+        LOG.info("Удаляемый узел $existingNode")
 
         // Lock them
         entityManager.lock(existingNode, LockModeType.PESSIMISTIC_WRITE)
@@ -166,10 +175,13 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     @Transactional
     override fun updateNode(nodeId: Long, input: AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput): ChainedAIArticleProcessingNode {
+        LOG.info("Обновление узла $nodeId: $input")
+
         // Find existing
         val existingNode = aiArticleProcessingNodesRepository
             .findById(nodeId)
             .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
+        LOG.info("Обновляемый узел: $existingNode")
 
         // Update
         input.prompt.ifPresent { existingNode.prompt = it }

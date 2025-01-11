@@ -26,9 +26,13 @@ internal open class SimpleArticlesFacade(
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
         return sourcesFacade.fetchLatestNews(sourceName, delta).map {
             itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
-        }.also { articlesRepository.saveAll(it).also { savedArticles ->
-            LOG.info("Сохранены новые статьи: $savedArticles")
-        } }
+        }.also {
+            articlesRepository.saveAll(it).also { savedArticles ->
+                if (savedArticles.isNotEmpty()) {
+                    LOG.info("Сохранены новые статьи: $savedArticles")
+                }
+            }
+        }
     }
 
     override fun getArticles(): List<Article> {
@@ -36,14 +40,18 @@ internal open class SimpleArticlesFacade(
     }
 
     override fun getArticles(page: Int): Page<Article> {
-        return articlesRepository.findAll(PageRequest.of(
-            page - 1,
-            Page.DEFAULT_PAGE_SIZE,
-            Sort.by(Sort.Direction.DESC, "createdAt")
-        )).let { Page(
-            it.totalPages,
-            it.content
-        ) }
+        return articlesRepository.findAll(
+            PageRequest.of(
+                page - 1,
+                Page.DEFAULT_PAGE_SIZE,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+            )
+        ).let {
+            Page(
+                it.totalPages,
+                it.content
+            )
+        }
     }
 
     override fun getArticle(id: Long): Article {

@@ -23,9 +23,16 @@ internal open class SimpleSourcesFacade(
             return rssReader
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
-                .filter { it.pubDateZonedDateTime.orElseThrow() >= ZonedDateTime.now() - delta }
+                .filter { it.pubDateZonedDateTime.orElseThrow() > ZonedDateTime.now() - delta }
                 .toList().also {
-                    LOG.info("Получены новости из источника $sourceName: ${it.joinToString { article -> "${article.link} | ${article.title}"}}")
+                    LOG.info(
+                        "Получены новости из источника $sourceName: ${
+                        if (it.isNotEmpty()) {
+                            it.joinToString { article -> "${article.link} | ${article.title}" }
+                        } else {
+                            "Пусто"
+                        }
+                    }")
                 }
         }
     }
@@ -40,10 +47,12 @@ internal open class SimpleSourcesFacade(
                 page - 1,
                 Page.DEFAULT_PAGE_SIZE
             )
-        ).let { Page(
-            it.totalPages,
-            it.content
-        ) }
+        ).let {
+            Page(
+                it.totalPages,
+                it.content
+            )
+        }
     }
 
     override fun getAllSources(): List<Source> {
@@ -56,10 +65,12 @@ internal open class SimpleSourcesFacade(
                 page - 1,
                 Page.DEFAULT_PAGE_SIZE
             )
-        ).let { Page(
-            it.totalPages,
-            it.content
-        ) }
+        ).let {
+            Page(
+                it.totalPages,
+                it.content
+            )
+        }
     }
 
     override fun getSourceByName(sourceName: String): Source {
@@ -79,9 +90,13 @@ internal open class SimpleSourcesFacade(
                 source.channels.ifPresent { this.channels = it }
             }
         ).also {
-            LOG.info("Добавлен новый источник: $it" + if (source.channels.isPresent) {
-                ", каналы: ${it.channels.joinToString { channel -> channel.name }}"
-            } else {""})
+            LOG.info(
+                "Добавлен новый источник: $it" + if (source.channels.isPresent) {
+                    ", каналы: ${it.channels.joinToString { channel -> channel.name }}"
+                } else {
+                    ""
+                }
+            )
         }
     }
 

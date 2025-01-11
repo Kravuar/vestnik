@@ -210,9 +210,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        "Список источников:" +
-                                "\n" +
-                                sourcesAsString,
+                        "Список источников" + if (sources.content.isNotEmpty()) {
+                            "\n" + sourcesAsString
+                        } else { " пуст"},
                         paginationMarkup(page, sources.totalPages)
                     )
                 }
@@ -404,9 +404,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        "Список каналов:" +
-                                "\n" +
-                                channelsAsString,
+                        "Список каналов" + if (channels.content.isNotEmpty()) {
+                            "\n" + channelsAsString
+                        } else { " пуст"},
                         paginationMarkup(page, channels.totalPages)
                     )
                 }
@@ -503,9 +503,9 @@ internal class TelegramAssistantFacade(
                     })
 
                     MessageWithReplyMarkup(
-                        "Список цепочек обработки новости:" +
-                                "\n" +
-                                chainsAsString,
+                        "Список цепочек обработки новости" + if (chains.content.isNotEmpty()) {
+                            "\n" + chainsAsString
+                        } else { " пуст"},
                         paginationMarkup(page, chains.totalPages)
                     )
                 }
@@ -537,7 +537,9 @@ internal class TelegramAssistantFacade(
                         page
                     )
                     MessageWithReplyMarkup(
-                        "Список режимов для источника ${sourceName}: ${modes.content.joinToString()}",
+                        "Список режимов для источника $sourceName" + if (modes.content.isNotEmpty()) {
+                            ": " + modes.content.joinToString()
+                        } else {" пуст"},
                         paginationMarkup(page, modes.totalPages)
                     )
                 }
@@ -1302,7 +1304,14 @@ internal class TelegramAssistantFacade(
         }
 
         private val PAGE_REGEX = Regex("^[1-9]\\d*\$")
-        private fun paginationMarkup(currentPage: Int, totalPages: Int): InlineKeyboardMarkup {
+        private fun paginationMarkup(currentPage: Int, totalPages: Int): InlineKeyboardMarkup? {
+            if (currentPage < 1) {
+                throw IllegalArgumentException("Невалидное значение страницы: $currentPage/$totalPages")
+            }
+            if (totalPages == 0) {
+                return null
+            }
+
             val prev = (currentPage - 1).toString()
             val current = currentPage.toString()
             val next = (currentPage + 1).toString()
