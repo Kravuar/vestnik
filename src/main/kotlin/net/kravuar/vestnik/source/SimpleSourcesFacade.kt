@@ -23,7 +23,7 @@ internal open class SimpleSourcesFacade(
             return rssReader
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
-                .filter { it.pubDateZonedDateTime.orElseThrow() < ZonedDateTime.now() - delta }
+                .filter { it.pubDateZonedDateTime.orElseThrow() >= ZonedDateTime.now() - delta }
                 .toList().also {
                     LOG.info("Получены новости из источника $sourceName: ${it.joinToString { article -> "${article.link} | ${article.title}"}}")
                 }

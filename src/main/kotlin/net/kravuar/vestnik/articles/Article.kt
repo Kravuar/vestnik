@@ -5,6 +5,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import net.kravuar.vestnik.source.Source
 import java.time.OffsetDateTime
@@ -16,6 +17,7 @@ class Article(
     @Column(nullable = false)
     var title: String,
     @Column(nullable = false)
+    @Lob
     var description: String,
     @Column(nullable = false)
     var url: String,

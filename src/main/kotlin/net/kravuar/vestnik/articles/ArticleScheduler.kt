@@ -28,7 +28,7 @@ internal class ArticleScheduler(
             tasksBySource[name] = scheduler.scheduleWithFixedDelay({
                 articlesFacade.fetchAndStoreLatestNews(name, scheduleDelay)
             }, scheduleDelay)
-            LOG.info("Запущен polling источника $source")
+            LOG.info("Запущен polling источника $this")
         }
     }
 
