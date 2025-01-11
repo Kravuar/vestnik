@@ -34,6 +34,6 @@ class Source(
     var id: Long? = null
 ) {
     override fun toString(): String {
-        return "Source(id=$id, name='$name', url='$url', contentXPath='$contentXPath', deleted=$deleted, suspended=$suspended)"
+        return "Source(id=$id, name='$name', scheduleDelay=$scheduleDelay, url='$url', contentXPath='$contentXPath', deleted=$deleted, suspended=$suspended)"
     }
 }

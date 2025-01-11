@@ -1114,7 +1114,7 @@ internal class TelegramAssistantFacade(
                 }
             }
         } catch (actionException: Exception) {
-            LOG.error("Ошибке команды ${command.commandName}, сообщение $userMessage", actionException)
+            LOG.error("Ошибка команды ${command.commandName}, сообщение $userMessage", actionException)
             try {
                 reply(
                     message = userMessage,

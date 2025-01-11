@@ -1,6 +1,8 @@
 package net.kravuar.vestnik
 
+import net.kravuar.vestnik.articles.ArticleScheduler
 import net.kravuar.vestnik.assistant.TelegramAssistantFacade
+import net.kravuar.vestnik.source.SourcesFacade
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan
