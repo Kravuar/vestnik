@@ -25,4 +25,8 @@ class Article(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
-)
+) {
+    override fun toString(): String {
+        return "Article(id=$id, source=${source.name}, title='$title', url='$url')"
+    }
+}

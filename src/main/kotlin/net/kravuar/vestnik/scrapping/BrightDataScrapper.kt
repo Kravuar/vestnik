@@ -2,6 +2,7 @@ package net.kravuar.vestnik.scrapping
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import org.apache.logging.log4j.LogManager
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.springframework.web.reactive.function.client.WebClient
@@ -16,6 +17,7 @@ internal class BrightDataScrapper(
 
     override fun scrap(url: String, xpath: String): String {
         try {
+            LOG.info("Читаем страницу $url, xpath $xpath")
             val response = webClient.post()
                 .uri("https://api.brightdata.com/request")
                 .header("Authorization", "Bearer $token")
@@ -38,5 +40,9 @@ internal class BrightDataScrapper(
             .put("zone", zone)
             .put("url", url)
             .put("format", "raw")
+    }
+
+    companion object {
+        private val LOG = LogManager.getLogger(BrightDataScrapper::class.java)
     }
 }

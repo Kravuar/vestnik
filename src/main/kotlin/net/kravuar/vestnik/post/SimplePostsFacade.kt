@@ -2,6 +2,7 @@ package net.kravuar.vestnik.post
 
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.post.PostsFacade.PostInput
+import org.apache.logging.log4j.LogManager
 
 internal open class SimplePostsFacade(
     private val postsRepository: PostsRepository,
@@ -22,6 +23,7 @@ internal open class SimplePostsFacade(
 
     @Transactional
     override fun addPost(postInput: PostInput): Post {
+        LOG.info("Сохранение поста: $postInput")
         return postsRepository.save(
             Post(
                 postInput.processedArticle.orElseThrow { IllegalArgumentException("Обработанная статья не может отсутствовать") },
@@ -29,6 +31,12 @@ internal open class SimplePostsFacade(
                 postInput.channelPostId.orElseThrow { IllegalArgumentException("ID Поста в целевом канале не может отсутствовать") },
             ).apply {
                 postInput.isForwarded.ifPresent { this.isForwarded = it }
-            })
+            }).also {
+                LOG.info("Пост сохранён: ${it.id} | $postInput")
+        }
+    }
+
+    companion object {
+        private val LOG = LogManager.getLogger(SimplePostsFacade::class.java)
     }
 }

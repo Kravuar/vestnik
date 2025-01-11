@@ -48,4 +48,8 @@ class ChainedAIArticleProcessingNode(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
-) : AIArticleProcessingNode
+) : AIArticleProcessingNode {
+    override fun toString(): String {
+        return "AIProcessingNode(id=$id, source=${source.name}, model='$model', temperature=$temperature, prompt='$prompt', parent=${parent?.id})"
+    }
+}

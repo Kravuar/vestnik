@@ -7,6 +7,7 @@ import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_MODEL
 import net.kravuar.vestnik.commons.Constants.Companion.DEFAULT_TEMPERATURE
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
+import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 
 internal open class SimpleAIArticleProcessingNodesFacade(
@@ -70,7 +71,9 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
         return aiArticleProcessingNodesRepository.saveAll(
             listOf(rootNode, formattingNode)
-        )
+        ).also {
+            LOG.info("Создана цепочка для источника $it")
+        }
     }
 
     @Transactional
@@ -85,7 +88,9 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         aiArticleProcessingNodesRepository.deleteAll(chain)
 
         // Delete it
-        return chain
+        return chain.also {
+            LOG.info("Удалена цепочка для источника $it")
+        }
     }
 
     @Transactional
@@ -122,7 +127,9 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
         return aiArticleProcessingNodesRepository.saveAll(
             listOfNotNull(previousNode, newNode, nextNode)
-        )[1]
+        )[1].also {
+            LOG.info("Добавлен узел $newNode после узла $previousNode")
+        }
     }
 
 
@@ -152,7 +159,9 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         }
 
         aiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, nextNode))
-        return existingNode
+        return existingNode.also {
+            LOG.info("Удалён узел $existingNode${if (previousNode != null) {"после узла $previousNode"} else {""}}")
+        }
     }
 
     @Transactional
@@ -167,11 +176,13 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         input.model.ifPresent { existingNode.model = it }
         input.temperature.ifPresent { existingNode.temperature = it }
 
-        aiArticleProcessingNodesRepository.save(existingNode)
-        return existingNode
+        return aiArticleProcessingNodesRepository.save(existingNode).also {
+            LOG.info("Обновлён узел $existingNode")
+        }
     }
 
     companion object {
+        private val LOG = LogManager.getLogger(SimpleAIArticleProcessingNodesFacade::class.java)
         private val REPROCESS_NODE = ReprocessNode()
 
         data class ReprocessNode(

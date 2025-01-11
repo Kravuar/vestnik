@@ -26,4 +26,8 @@ class Channel(
     var sources: MutableSet<Source> = HashSet(),
     @Column(nullable = false)
     var deleted: Boolean = false,
-)
+) {
+    override fun toString(): String {
+        return "Channel(id=$id, name='$name', platform=$platform, sources=$sources, deleted=$deleted)"
+    }
+}

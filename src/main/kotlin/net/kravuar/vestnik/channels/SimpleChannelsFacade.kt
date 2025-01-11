@@ -5,8 +5,10 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
+import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import kotlin.concurrent.withLock
+import kotlin.jvm.optionals.getOrElse
 
 internal open class SimpleChannelsFacade(
     private val channelRepository: ChannelRepository,
@@ -58,6 +60,7 @@ internal open class SimpleChannelsFacade(
 
     @Transactional
     override fun addChannel(input: ChannelsFacade.ChannelInput): Channel {
+        LOG.info("Добавление канала: $input")
         return channelRepository.save(
             Channel(
                 input.id.orElseThrow { IllegalArgumentException("При создании канала id обязательно") },
@@ -65,12 +68,17 @@ internal open class SimpleChannelsFacade(
                 input.platform.orElseThrow { IllegalArgumentException("При создании канала платформа обязательно") },
             ).apply {
                 input.sources.ifPresent { sources = it }
-            })
+            }).also {
+                LOG.info("Добавлен канал: $it")
+        }
     }
 
     @Transactional
     override fun deleteChannel(name: String): Channel {
-        return channelRepository.deleteByName(name)
+        LOG.info("Удаление канала: $name")
+        return channelRepository.deleteByName(name).also {
+            LOG.info("Удалён канал: $it")
+        }
     }
 
     override fun postArticle(
@@ -78,6 +86,7 @@ internal open class SimpleChannelsFacade(
         primaryChannel: Channel,
         forwardChannels: Collection<Channel>
     ) {
+        LOG.info("Публикация статьи: $processedArticle, в каналы: ${primaryChannel.name} -> ${forwardChannels.joinToString { it.name }}")
         require(forwardChannels.none { it.id == primaryChannel.id }) {
             "В каналах для Forwarding'а указан первичный канал"
         }
@@ -110,12 +119,19 @@ internal open class SimpleChannelsFacade(
             val primaryPublisher = publishers[primaryChannel.platform]
                 ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
             val primaryPost = primaryPublisher.publish(processedArticle, primaryChannel)
+            LOG.info("Публикация статьи: $processedArticle в основной канал ${primaryChannel.name} выполнена")
 
             forwardChannels.forEach {
                 val forwardPublisher = publishers[it.platform]
                     ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
-                forwardPublisher.forward(primaryChannel, primaryPost.id!!, it)
+                forwardPublisher.forward(primaryChannel, primaryPost.id!!, it).also { post ->
+                    LOG.info("Forward статьи: $processedArticle в канал ${post.channel.name} выполнена")
+                }
             }
         }
+    }
+
+    companion object {
+        private val LOG = LogManager.getLogger(SimpleChannelsFacade::class.java)
     }
 }

@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.articles.Article
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
+import org.apache.logging.log4j.LogManager
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -21,6 +22,7 @@ internal open class AIProcessingArticlesFacade(
     @Transactional
     override fun processArticle(article: Article, mode: String): ProcessedArticle {
         return aiArticleProcessingNodesFacade.getChain(article.source, mode).let { chain ->
+            LOG.info("Обработка статьи $article, режим $mode")
             val processedContent = chain
                 .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->
                     chatModel.call(
@@ -36,7 +38,9 @@ internal open class AIProcessingArticlesFacade(
                         )
                     ).result.output.content
                 }
-            processedArticleRepository.save(ProcessedArticle(article, processedContent, mode))
+            processedArticleRepository.save(ProcessedArticle(article, processedContent, mode)).also {
+                LOG.info("Обработка статьи $article завершена")
+            }
         }
     }
 
@@ -48,6 +52,7 @@ internal open class AIProcessingArticlesFacade(
     override fun reprocessArticle(processedArticleId: Long, remarks: String): ProcessedArticle {
         return getProcessedArticle(processedArticleId)
             .run {
+                LOG.info("Повторная обработка статьи $this, исходная статья $article")
                 val reprocessNode = aiArticleProcessingNodesFacade.getReprocessNode()
                 val reprocessedContent = chatModel.call(
                     Prompt(
@@ -62,7 +67,9 @@ internal open class AIProcessingArticlesFacade(
                     )
                 ).result.output.content
                 content = reprocessedContent
-                processedArticleRepository.save(this)
+                processedArticleRepository.save(this).also {
+                    LOG.info("Повторная обработка статьи $this завершена")
+                }
             }
     }
 
@@ -73,6 +80,10 @@ internal open class AIProcessingArticlesFacade(
 
     override fun getProcessedArticleOptional(id: Long): Optional<ProcessedArticle> {
         return processedArticleRepository.findById(id)
+    }
+
+    companion object {
+        private val LOG = LogManager.getLogger(AIProcessingArticlesFacade::class.java)
     }
 }
 

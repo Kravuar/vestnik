@@ -5,6 +5,7 @@ import com.apptasticsoftware.rssreader.RssReader
 import com.apptasticsoftware.rssreader.util.ItemComparator
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
+import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import java.time.Duration
 import java.time.ZonedDateTime
@@ -23,7 +24,9 @@ internal open class SimpleSourcesFacade(
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
                 .filter { it.pubDateZonedDateTime.orElseThrow() < ZonedDateTime.now() - delta }
-                .toList()
+                .toList().also {
+                    LOG.info("Получены новости из источника $sourceName: ${it.joinToString { article -> "${article.link} | ${article.title}"}}")
+                }
         }
     }
 
@@ -65,7 +68,9 @@ internal open class SimpleSourcesFacade(
 
     @Transactional
     override fun addSource(source: SourcesFacade.SourceInput): Source {
-        return sourcesRepository.save(inputToSource(source))
+        return sourcesRepository.save(inputToSource(source)).also {
+            LOG.info("Добавлен новый источник: $it, каналы: ${it.channels.joinToString { channel -> channel.name }}")
+        }
     }
 
     @Transactional
@@ -77,16 +82,22 @@ internal open class SimpleSourcesFacade(
             input.contentXPath.ifPresent { this.contentXPath = it }
             input.suspended.ifPresent { this.suspended = it }
             input.channels.ifPresent { this.channels = it }
+        }.also {
+            LOG.info("Обновлён источник $sourceName: $it")
         }
     }
 
     @Transactional
     override fun deleteSource(sourceName: String): Source {
-        return sourcesRepository.deleteByName(sourceName)
+        return sourcesRepository.deleteByName(sourceName).also {
+            LOG.info("Удалён источник $sourceName: $it")
+        }
     }
 
     companion object {
-        fun inputToSource(sourceInput: SourcesFacade.SourceInput): Source {
+        private val LOG = LogManager.getLogger(SimpleSourcesFacade::class.java)
+
+        private fun inputToSource(sourceInput: SourcesFacade.SourceInput): Source {
             return Source(
                 sourceInput.name.orElse(null),
                 sourceInput.url.orElse(null),

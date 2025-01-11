@@ -28,4 +28,8 @@ class ProcessedArticle(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
-)
+) {
+    override fun toString(): String {
+        return "ProcessedArticle(id=$id, articleId=${article.id}, title=${article.title}, mode='$mode', createdAt=$createdAt)"
+    }
+}

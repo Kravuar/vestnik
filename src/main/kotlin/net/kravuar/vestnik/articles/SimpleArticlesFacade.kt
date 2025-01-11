@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
+import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import java.time.Duration
@@ -25,7 +26,9 @@ internal open class SimpleArticlesFacade(
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
         return sourcesFacade.fetchLatestNews(sourceName, delta).map {
             itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
-        }.also { articlesRepository.saveAll(it) }
+        }.also { articlesRepository.saveAll(it).also { savedArticles ->
+            LOG.info("Сохранены новые статьи: $savedArticles")
+        } }
     }
 
     override fun getArticles(): List<Article> {
@@ -53,10 +56,14 @@ internal open class SimpleArticlesFacade(
             input.title.ifPresent { title = it }
             input.description.ifPresent { description = it }
             input.url.ifPresent { url = it }
+        }.also {
+            LOG.info("Обновлена статья: $it")
         }
     }
 
     companion object {
+        private val LOG = LogManager.getLogger(SimpleArticlesFacade::class.java)
+
         fun itemToArticle(source: Source, item: Item): Article {
             return Article(
                 source,
