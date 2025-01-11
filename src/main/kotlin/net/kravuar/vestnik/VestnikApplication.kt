@@ -1,13 +1,16 @@
 package net.kravuar.vestnik
 
-import net.kravuar.vestnik.articles.ArticleScheduler
 import net.kravuar.vestnik.assistant.TelegramAssistantFacade
-import net.kravuar.vestnik.source.SourcesFacade
+import org.apache.logging.log4j.LogManager
 import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
+import org.springframework.context.ApplicationEvent
+import org.springframework.context.annotation.Configuration
+import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.transaction.annotation.EnableTransactionManagement
 
@@ -17,7 +20,20 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
 @EnableTransactionManagement
 @EnableScheduling
 @EntityScan(basePackages = ["net.kravuar.vestnik"])
-class VestnikApplication
+internal class VestnikApplication
+
+@Configuration
+@ConditionalOnProperty("logging.level.net.kravuar.vestnik", havingValue = "DEBUG")
+internal class VestnikDebugConfiguration {
+	@EventListener
+	fun onApplication(event: ApplicationEvent) {
+		LOG.debug(event)
+	}
+
+	companion object {
+		private val LOG = LogManager.getLogger(VestnikApplication::class.java)
+	}
+}
 
 suspend fun main(args: Array<String>) {
 	val context = runApplication<VestnikApplication>(*args)

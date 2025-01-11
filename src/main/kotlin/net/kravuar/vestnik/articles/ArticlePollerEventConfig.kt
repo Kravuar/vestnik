@@ -10,17 +10,17 @@ internal class ArticlePollerEventConfig(
     private val articleScheduler: ArticleScheduler
 ) {
 
-    @EventListener(condition = "#event.state == 'CREATED' && #event.entity.suspended == false")
+    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED && #event.entity.suspended == false")
     fun startPolling(event: EntityEvent<Source>) {
         articleScheduler.startPolling(event.entity)
     }
 
-    @EventListener(condition = "#event.state == 'DELETED'")
+    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).DELETED")
     fun stopPolling(event: EntityEvent<Source>) {
         articleScheduler.stopPolling(event.entity.name)
     }
 
-    @EventListener(condition = "#event.state == 'UPDATED'")
+    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).UPDATED")
     fun switchPolling(event: EntityEvent<Source>) {
         if (event.entity.suspended == true) {
             articleScheduler.stopPolling(event.entity.name)

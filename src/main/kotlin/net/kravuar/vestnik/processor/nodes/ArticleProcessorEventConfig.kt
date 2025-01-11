@@ -11,7 +11,7 @@ internal class ArticleProcessorEventConfig(
     private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
 ) {
 
-    @EventListener(condition = "#event.state == 'CREATED'")
+    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED")
     fun createInitialSequence(event: EntityEvent<Source>) {
         aiArticleProcessingNodesFacade.createChain(
             event.entity,

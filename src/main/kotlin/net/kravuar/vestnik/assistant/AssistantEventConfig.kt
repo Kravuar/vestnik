@@ -10,7 +10,7 @@ internal class AssistantEventConfig(
     private val assistantFacade: TelegramAssistantFacade
 ) {
 
-    @EventListener(condition = "event.state == 'CREATED'")
+    @EventListener(condition = "event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED")
     fun notifyAboutNewArticle(event: EntityEvent<Article>) {
         assistantFacade.notifyNewArticle(event.entity)
     }

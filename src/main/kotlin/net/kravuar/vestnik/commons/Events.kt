@@ -18,4 +18,8 @@ class EntityEvent<T>(
         fun <T> updated(source: Any, entity: T) = EntityEvent(source, entity, EntityState.UPDATED)
         fun <T> deleted(source: Any, entity: T) = EntityEvent(source, entity, EntityState.DELETED)
     }
+
+    override fun toString(): String {
+        return "EntityEvent(source=$source, state=$state, entity=$entity)"
+    }
 }
