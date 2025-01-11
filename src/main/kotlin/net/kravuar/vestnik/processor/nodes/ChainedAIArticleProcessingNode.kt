@@ -22,7 +22,7 @@ interface AIArticleProcessingNode {
 
 @Entity
 @Table(indexes = [
-    Index(columnList = "source,mode", unique = true),
+    Index(columnList = "sourceId,mode", unique = true),
 ])
 class ChainedAIArticleProcessingNode(
     @ManyToOne(optional = false)

@@ -14,7 +14,7 @@ import java.time.OffsetDateTime
 
 @Entity
 @Table(indexes = [
-    Index(columnList = "processedArticle,channel", unique = true),
+    Index(columnList = "processedArticleId,channelId", unique = true),
 ])
 class Post(
     @ManyToOne(optional = false)
