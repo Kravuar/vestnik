@@ -748,7 +748,11 @@ internal class TelegramAssistantFacade(
                 LOG.debug(it)
             }
         }
-        return bot.longPolling(behaviour)
+        return bot.longPolling(behaviour).also {
+            it.invokeOnCompletion {
+                LOG.info("Работа ассистента закончена")
+            }
+        }
     }
 
     private suspend fun <BS : BehaviourContext> BS.processedArticleHandling(processedArticle: ProcessedArticle) {
