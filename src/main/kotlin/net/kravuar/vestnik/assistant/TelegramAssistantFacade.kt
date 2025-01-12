@@ -514,7 +514,7 @@ internal class TelegramAssistantFacade(
                     val chainsAsString = writeForMessage(chains.content.map {
                         mapOf(
                             "Id Корня" to it.id,
-                            "Источник" to it.source,
+                            "Источник" to it.source.name,
                             "Режим" to it.mode,
                         )
                     })

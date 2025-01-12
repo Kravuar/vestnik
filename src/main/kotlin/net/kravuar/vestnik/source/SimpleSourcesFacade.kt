@@ -18,6 +18,7 @@ internal open class SimpleSourcesFacade(
     override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
         with(getSourceByName(sourceName)) {
             if (suspended == true) {
+                LOG.info("Источник $sourceName приостановлен, fetch не будет произведён")
                 return emptyList()
             }
             return rssReader

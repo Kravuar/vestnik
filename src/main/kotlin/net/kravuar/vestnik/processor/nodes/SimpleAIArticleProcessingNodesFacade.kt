@@ -17,13 +17,13 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     override fun getChains(): List<AIArticleProcessingNodesFacade.ChainInfo> {
         return aiArticleProcessingNodesRepository
-            .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse()
+            .findAllByParentIsNullAndSourceDeletedIsFalse()
             .map { AIArticleProcessingNodesFacade.ChainInfo(it.id!!, it.source, it.mode) }
     }
 
     override fun getChains(page: Int): Page<AIArticleProcessingNodesFacade.ChainInfo> {
         return aiArticleProcessingNodesRepository
-            .findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(
+            .findAllByParentIsNullAndSourceDeletedIsFalse(
                 PageRequest.of(
                     page - 1,
                     Page.DEFAULT_PAGE_SIZE
@@ -52,13 +52,13 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     override fun getModes(source: Source): List<String> {
         return aiArticleProcessingNodesRepository
-            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source)
+            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(source)
             .map { it.mode }
     }
 
     override fun getModes(source: Source, page: Int): Page<String> {
         return aiArticleProcessingNodesRepository
-            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(
+            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(
                 source, PageRequest.of(
                     page - 1,
                     Page.DEFAULT_PAGE_SIZE

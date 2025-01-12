@@ -19,10 +19,10 @@ internal interface AIArticleProcessingNodesRepository :
         mode: String
     ): Optional<ChainedAIArticleProcessingNode>
 
-    fun findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(): List<ChainedAIArticleProcessingNode>
-    fun findAllByParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(pageable: Pageable): Page<ChainedAIArticleProcessingNode>
-    fun findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(source: Source): List<ChainedAIArticleProcessingNode>
-    fun findAllBySourceAndParentIsNullAndSourceDeletedIsFalseAndSourceSuspendedIsFalse(
+    fun findAllByParentIsNullAndSourceDeletedIsFalse(): List<ChainedAIArticleProcessingNode>
+    fun findAllByParentIsNullAndSourceDeletedIsFalse(pageable: Pageable): Page<ChainedAIArticleProcessingNode>
+    fun findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(source: Source): List<ChainedAIArticleProcessingNode>
+    fun findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(
         source: Source,
         pageable: Pageable
     ): Page<ChainedAIArticleProcessingNode>
