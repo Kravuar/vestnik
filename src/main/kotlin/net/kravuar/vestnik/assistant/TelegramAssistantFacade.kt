@@ -1205,7 +1205,7 @@ internal class TelegramAssistantFacade(
                 .append(" ")
                 .append(SPLIT_INPUT)
                 .append(" ")
-                .append(pair.second.toString().italicHTML())
+                .append(pair.second.toString())
                 .toString()
         }
 
