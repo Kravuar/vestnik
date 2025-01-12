@@ -49,10 +49,6 @@ internal interface ChainedAiArticleProcessingNodesRepository :
     )
     fun findRoots(source: Source?, pageable: Pageable): Page<ChainedAIArticleProcessingNode>
 
-    /**
-     * Replaces the original overloaded method with Pageable:
-     * findAllBySourceAndParentIsNullAndSourceIsNullOrParentIsNullAndSourceDeletedIsFalse
-     */
     @Query(
         """
         SELECT c

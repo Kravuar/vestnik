@@ -1,5 +1,6 @@
 package net.kravuar.vestnik.channels
 
+import net.kravuar.vestnik.source.Source
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
@@ -10,8 +11,27 @@ import java.util.Optional
 
 @Repository
 internal interface ChannelRepository : JpaRepository<Channel, Long> {
-    fun findAllByDeletedIsFalse(): List<Channel>
-    fun findAllByDeletedIsFalse(pageable: Pageable): Page<Channel>
+    @Query(
+        """
+        SELECT c
+        FROM Channel c
+        WHERE c.deleted = false
+        AND (
+            :source IS NULL
+            OR :source member c.sources
+        )
+    """
+    )
+    fun findChannels(source: Source?, pageable: Pageable): Page<Channel>
+    @Query(
+        """
+        SELECT c
+        FROM Channel c
+        WHERE :source IS NULL
+        OR :source member c.sources
+    """
+    )
+    fun findAllChannels(source: Source?, pageable: Pageable): Page<Channel>
 
     fun findByName(name: String): Optional<Channel>
 

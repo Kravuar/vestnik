@@ -14,22 +14,13 @@ interface ChannelsFacade {
     )
 
     /**
-     * Find all non deleted
-     */
-    fun getChannels(): List<Channel>
-    /**
      * Find page of non deleted
      */
-    fun getChannels(page: Int): Page<Channel>
-
-    /**
-     * Find all including deleted
-     */
-    fun getAllChannels(): List<Channel>
+    fun getChannels(source: Source? = null, page: Int): Page<Channel>
     /**
      * Find page including deleted
      */
-    fun getAllChannels(page: Int): Page<Channel>
+    fun getAllChannels(source: Source? = null, page: Int): Page<Channel>
 
     fun getChannelByName(name: String): Channel
 

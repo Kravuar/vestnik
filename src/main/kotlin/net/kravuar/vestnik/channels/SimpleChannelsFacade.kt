@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
+import net.kravuar.vestnik.source.Source
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import kotlin.concurrent.withLock
@@ -16,12 +17,9 @@ internal open class SimpleChannelsFacade(
 ) : ChannelsFacade {
     private val locks = Striped.lazyWeakLock(7)
 
-    override fun getChannels(): List<Channel> {
-        return channelRepository.findAllByDeletedIsFalse()
-    }
-
-    override fun getChannels(page: Int): Page<Channel> {
-        return channelRepository.findAllByDeletedIsFalse(
+    override fun getChannels(source: Source?, page: Int): Page<Channel> {
+        return channelRepository.findChannels(
+            source,
             PageRequest.of(
                 page - 1,
                 Page.DEFAULT_PAGE_SIZE
@@ -34,12 +32,9 @@ internal open class SimpleChannelsFacade(
         }
     }
 
-    override fun getAllChannels(): List<Channel> {
-        return channelRepository.findAll()
-    }
-
-    override fun getAllChannels(page: Int): Page<Channel> {
-        return channelRepository.findAll(
+    override fun getAllChannels(source: Source?, page: Int): Page<Channel> {
+        return channelRepository.findAllChannels(
+            source,
             PageRequest.of(
                 page - 1,
                 Page.DEFAULT_PAGE_SIZE
@@ -69,7 +64,7 @@ internal open class SimpleChannelsFacade(
             ).apply {
                 input.sources.ifPresent { sources = it }
             }).also {
-                LOG.info("Добавлен канал: $it")
+            LOG.info("Добавлен канал: $it")
         }
     }
 
@@ -86,9 +81,13 @@ internal open class SimpleChannelsFacade(
         primaryChannel: Channel,
         forwardChannels: Collection<Channel>
     ) {
-        LOG.info("Публикация статьи: $processedArticle, в канал ${primaryChannel.name}" + if (forwardChannels.isNotEmpty()) {
-            " с forward в: ${forwardChannels.joinToString { it.name }}"
-        } else {""})
+        LOG.info(
+            "Публикация статьи: $processedArticle, в канал ${primaryChannel.name}" + if (forwardChannels.isNotEmpty()) {
+                " с forward в: ${forwardChannels.joinToString { it.name }}"
+            } else {
+                ""
+            }
+        )
         require(forwardChannels.none { it.id == primaryChannel.id }) {
             "В каналах для Forwarding'а указан первичный канал"
         }
