@@ -9,7 +9,7 @@ import java.time.Duration
 internal class NotifyingSourcesFacade(
     private val eventPublisher: ApplicationEventPublisher,
     private val sourcesFacade: SourcesFacade
-): SourcesFacade {
+) : SourcesFacade {
 
     override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
         return sourcesFacade.fetchLatestNews(sourceName, delta)
@@ -46,7 +46,10 @@ internal class NotifyingSourcesFacade(
     }
 
     override fun deleteSource(sourceName: String): Boolean {
-        return sourcesFacade.deleteSource(sourceName)
-            .also { eventPublisher.publishEvent(EntityEvent.deleted(this, it)) }
+        with(getSourceByName(sourceName)) {
+            return sourcesFacade.deleteSource(sourceName).also {
+                eventPublisher.publishEvent(EntityEvent.deleted(this@NotifyingSourcesFacade, this))
+            }
+        }
     }
 }

@@ -23,8 +23,13 @@ internal class ArticleScheduler(
 
     @Synchronized
     fun startPolling(source: Source) {
+        LOG.info("Запуск polling'а для ${source.name}")
         source.run {
-            tasksBySource[name]?.cancel(true)
+            tasksBySource[name]?.let {
+                it.cancel(true).also {
+                    LOG.info("Прекращён polling источника $source для перезапуска")
+                }
+            }
             tasksBySource[name] = scheduler.scheduleWithFixedDelay({
                 articlesFacade.fetchAndStoreLatestNews(name, scheduleDelay)
             }, scheduleDelay)
@@ -33,9 +38,10 @@ internal class ArticleScheduler(
     }
 
     fun stopPolling(source: String) {
+        LOG.info("Прекращение polling'а для $source")
         tasksBySource[source]?.cancel(true).also {
             LOG.info("Прекращён polling источника $source")
-        }
+        } ?: LOG.warn("Polling источника $source для прекращения не найден")
     }
 
     companion object {

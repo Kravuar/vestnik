@@ -76,6 +76,12 @@ import java.util.function.Predicate
 import kotlin.time.Duration
 import kotlin.time.toKotlinDuration
 
+private class ReplyableException(
+    val replyTo: AccessibleMessage,
+    override val message: String,
+    override val cause: Throwable? = null,
+) : RuntimeException()
+
 @OptIn(PreviewFeature::class)
 internal class TelegramAssistantFacade(
     adminChannelId: Long,
@@ -162,10 +168,21 @@ internal class TelegramAssistantFacade(
                     LOG.warn("Ошибка модификации сообщения", it)
                 }
 
+                is ReplyableException -> {
+                    try {
+                        bot.reply(
+                            message = it.replyTo,
+                            text = it.message
+                        )
+                    } catch (exception: Exception) {
+                        LOG.error("Не удалось оповестить об ошибке $it")
+                    }
+                }
+
                 else -> {
                     bot.send(
                         chatId = adminChannel,
-                        text = it.message ?: "Произошла непредвиденная ошибка: $it"
+                        text = "Произошла непредвиденная ошибка: ${it.message ?: it}"
                     )
                 }
             }
@@ -204,7 +221,7 @@ internal class TelegramAssistantFacade(
                             "Id" to it.id,
                             "Name" to it.name,
                             "URL" to it.url,
-                            "Периодичность" to it.scheduleDelay,
+                            "Периодичность" to it.scheduleDelay.toKotlinDuration().toString(),
                             "Приостановлен" to it.suspended,
                             "Удалён" to it.deleted
                         )
@@ -255,7 +272,7 @@ internal class TelegramAssistantFacade(
                             mapOf(
                                 "Id" to source.id,
                                 "URL" to source.url,
-                                "Периодичность" to source.scheduleDelay,
+                                "Периодичность" to source.scheduleDelay.toKotlinDuration().toString(),
                                 "XPATH к контенту" to source.contentXPath,
                                 "Целевые Каналы" to source.channels.joinToString { channel -> channel.name },
                                 "Приостановлен" to source.suspended,
@@ -795,6 +812,7 @@ internal class TelegramAssistantFacade(
     }
 
     override fun notifyNewArticle(article: Article) {
+        LOG.info("Оповещение о новой статье $article")
         runBlocking {
             val id = requireNotNull(article.id) { "ID обрабатываемой статьи не может отсутствовать." }
             bot.send(
@@ -1144,19 +1162,11 @@ internal class TelegramAssistantFacade(
                 }
             }
         } catch (actionException: Exception) {
-            LOG.error("Ошибка команды ${command.commandName}, сообщение $userMessage")
-            try {
-                reply(
-                    message = userMessage,
-                    text = "${errorMessage()}: ${actionException.message}"
-                )
-            } catch (exception: Exception) {
-                LOG.error("Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage")
-                throw exception.also {
-                    it.addSuppressed(actionException)
-                }
-            }
-            throw actionException
+            throw ReplyableException(
+                replyTo = userMessage,
+                message = "Ошибка команды ${command.commandName}. ${errorMessage()}: ${actionException.message}",
+                cause = actionException
+            )
         }
     }
 

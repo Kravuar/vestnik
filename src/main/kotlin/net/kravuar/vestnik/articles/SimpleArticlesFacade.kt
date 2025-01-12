@@ -76,7 +76,7 @@ internal open class SimpleArticlesFacade(
             return Article(
                 source,
                 item.title.orElseThrow(),
-                item.content.orElseThrow(),
+                item.description.orElseThrow(),
                 item.link.orElseThrow(),
             )
         }

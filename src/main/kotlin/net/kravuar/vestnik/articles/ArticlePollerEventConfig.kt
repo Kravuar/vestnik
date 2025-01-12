@@ -10,7 +10,7 @@ internal class ArticlePollerEventConfig(
     private val articleScheduler: ArticleScheduler
 ) {
 
-    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED && #event.entity.suspended == false")
+    @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED && #event.entity.suspended != true")
     fun startPolling(event: EntityEvent<Source>) {
         articleScheduler.startPolling(event.entity)
     }
