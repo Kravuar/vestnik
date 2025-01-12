@@ -79,11 +79,70 @@ import java.util.function.Predicate
 import kotlin.time.Duration
 import kotlin.time.toKotlinDuration
 
+private data class MessageWithReplyMarkup(
+    val message: String,
+    val replyMarkup: InlineKeyboardMarkup?
+)
+
 private class ReplyableException(
     val replyTo: AccessibleMessage,
     override val message: String,
     override val cause: Throwable? = null,
 ) : RuntimeException()
+
+private enum class Command(
+    val commandName: String,
+    val description: String,
+    val args: List<Arg>,
+) {
+    SHOW_SOURCES("show_sources", "Показать список источников", emptyList()),
+    SHOW_SOURCE("show_source", "Показать источник", listOf(Arg("name", "Имя источника"))),
+    ADD_SOURCE("add_source", "Добавить источник", emptyList()),
+    DELETE_SOURCE("delete_source", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
+    UPDATE_SOURCE("update_source", "Обновить источник", emptyList()),
+    SHOW_CHANNELS("show_channels", "Показать список каналов", listOf(Arg("source", "Имя источника", true))),
+    ADD_CHANNEL("add_channel", "Добавить канал", emptyList()),
+    DELETE_CHANNEL("delete_channel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
+    SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", listOf(Arg("source", "Имя источника", true))),
+    SHOW_MODES(
+        "show_modes",
+        "Показать режимы обработки статей для источника",
+        listOf(Arg("source", "Имя источника", true))
+    ),
+    SHOW_CHAIN(
+        "show_chain",
+        "Показать конкретную цепочку",
+        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
+    ),
+    ADD_CHAIN(
+        "add_chain",
+        "Добавить цепочку обработки статьи для конкретного источника",
+        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
+    ),
+    DELETE_CHAIN(
+        "delete_chain",
+        "Удалить цепочку обработки статьи",
+        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
+    ),
+    ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
+    DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
+    UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList()),
+    SHOW_COMMANDS("show_commands", "Показать список команд", emptyList());
+
+    data class Arg(
+        val name: String,
+        val description: String,
+        val optional: Boolean = false
+    ) {
+        override fun toString(): String {
+            return description + if (optional) {
+                " (опционален)"
+            } else {
+                ""
+            }
+        }
+    }
+}
 
 @OptIn(PreviewFeature::class)
 internal class TelegramAssistantFacade(
@@ -112,69 +171,8 @@ internal class TelegramAssistantFacade(
         }
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO)
-
-    private data class MessageWithReplyMarkup(
-        val message: String,
-        val replyMarkup: InlineKeyboardMarkup?
-    )
-
-    private enum class Command(
-        val commandName: String,
-        val description: String,
-        val args: List<Arg>,
-    ) {
-        SHOW_SOURCES("show_sources", "Показать список источников", emptyList()),
-        SHOW_SOURCE("show_source", "Показать источник", listOf(Arg("name", "Имя источника"))),
-        ADD_SOURCE("add_source", "Добавить источник", emptyList()),
-        DELETE_SOURCE("delete_source", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
-        UPDATE_SOURCE("update_source", "Обновить источник", emptyList()),
-        SHOW_CHANNELS("show_channels", "Показать список каналов", listOf(Arg("source", "Имя источника", true))),
-        ADD_CHANNEL("add_channel", "Добавить канал", emptyList()),
-        DELETE_CHANNEL("delete_channel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
-        SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", listOf(Arg("source", "Имя источника", true))),
-        SHOW_MODES(
-            "show_modes",
-            "Показать режимы обработки статей для источника",
-            listOf(Arg("source", "Имя источника", true))
-        ),
-        SHOW_CHAIN(
-            "show_chain",
-            "Показать конкретную цепочку",
-            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-        ),
-        ADD_CHAIN(
-            "add_chain",
-            "Добавить цепочку обработки статьи для конкретного источника",
-            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-        ),
-        DELETE_CHAIN(
-            "delete_chain",
-            "Удалить цепочку обработки статьи",
-            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-        ),
-        ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
-        DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
-        UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList()),
-        SHOW_COMMANDS("show_commands", "Показать список команд", emptyList());
-
-        data class Arg(
-            val name: String,
-            val description: String,
-            val optional: Boolean = false
-        ) {
-            override fun toString(): String {
-                return description + if (optional) {
-                    " (опционален)"
-                } else {
-                    ""
-                }
-            }
-        }
-    }
-
     internal suspend fun start(): Job {
-        val behaviour = bot.buildBehaviour(scope = scope, defaultExceptionsHandler = {
+        val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
             LOG.error("Ошибка во время работы ассистента", it)
             when (it) {
                 is MessageIsNotModifiedException -> {
