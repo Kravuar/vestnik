@@ -1,7 +1,7 @@
 package net.kravuar.vestnik.processor
 
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
-import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesRepository
+import net.kravuar.vestnik.processor.nodes.ChainedAiArticleProcessingNodesRepository
 import net.kravuar.vestnik.processor.nodes.SimpleAIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import net.kravuar.vestnik.source.SourcesFacade
@@ -16,9 +16,9 @@ internal class ArticleProcessingConfig {
     @Bean
     fun aiArticleProcessingFacade(
         sourcesFacade: SourcesFacade,
-        aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
+        chainedAiArticleProcessingNodesRepository: ChainedAiArticleProcessingNodesRepository
     ): AIArticleProcessingNodesFacade = SimpleAIArticleProcessingNodesFacade(
-        aiArticleProcessingNodesRepository
+        chainedAiArticleProcessingNodesRepository
     )
 
     @Bean

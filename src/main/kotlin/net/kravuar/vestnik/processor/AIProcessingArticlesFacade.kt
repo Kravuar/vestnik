@@ -2,6 +2,7 @@ package net.kravuar.vestnik.processor
 
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.articles.Article
+import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import org.apache.logging.log4j.LogManager
@@ -44,8 +45,8 @@ internal open class AIProcessingArticlesFacade(
         }
     }
 
-    override fun getModes(article: Article): List<String> {
-        return aiArticleProcessingNodesFacade.getModes(article.source)
+    override fun getModes(article: Article, page: Int): Page<String> {
+        return aiArticleProcessingNodesFacade.getModes(article.source, page)
     }
 
     @Transactional

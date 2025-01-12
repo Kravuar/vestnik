@@ -21,8 +21,8 @@ interface AIArticleProcessingNode {
 
 @Entity
 class ChainedAIArticleProcessingNode(
-    @ManyToOne(optional = false)
-    var source: Source,
+    @ManyToOne(optional = true)
+    var source: Source? = null,
     @Column(nullable = false)
     @NotBlank
     @Size(max = 16)
@@ -46,6 +46,6 @@ class ChainedAIArticleProcessingNode(
     val id: Long? = null,
 ) : AIArticleProcessingNode {
     override fun toString(): String {
-        return "AIProcessingNode(id=$id, source=${source.name}, model='$model', temperature=$temperature, prompt='$prompt', parent=${parent?.id})"
+        return "AIProcessingNode(id=$id, mode=$mode, ${source?.let { "source=${it.name}," } ?: ","} model='$model', temperature=$temperature, prompt='$prompt', parent=${parent?.id})"
     }
 }

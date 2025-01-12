@@ -11,19 +11,14 @@ import org.springframework.data.domain.PageRequest
 import kotlin.concurrent.withLock
 
 internal open class SimpleAIArticleProcessingNodesFacade(
-    private val aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
+    private val chainedAiArticleProcessingNodesRepository: ChainedAiArticleProcessingNodesRepository
 ) : AIArticleProcessingNodesFacade {
     private val locks = Striped.lazyWeakLock(7)
 
-    override fun getChains(): List<AIArticleProcessingNodesFacade.ChainInfo> {
-        return aiArticleProcessingNodesRepository
-            .findAllByParentIsNullAndSourceDeletedIsFalse()
-            .map { AIArticleProcessingNodesFacade.ChainInfo(it.id!!, it.source, it.mode) }
-    }
-
-    override fun getChains(page: Int): Page<AIArticleProcessingNodesFacade.ChainInfo> {
-        return aiArticleProcessingNodesRepository
-            .findAllByParentIsNullAndSourceDeletedIsFalse(
+    override fun getChains(source: Source?, page: Int): Page<AIArticleProcessingNodesFacade.ChainInfo> {
+        return chainedAiArticleProcessingNodesRepository
+            .findRoots(
+                source,
                 PageRequest.of(
                     page - 1,
                     Page.DEFAULT_PAGE_SIZE
@@ -42,28 +37,24 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             }
     }
 
-    override fun getChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode> {
+    override fun getChain(source: Source?, mode: String): List<ChainedAIArticleProcessingNode> {
         return generateSequence(
-            aiArticleProcessingNodesRepository
-                .findBySourceAndModeAndParentIsNullAndSourceDeletedIsFalse(source, mode)
+            chainedAiArticleProcessingNodesRepository
+                .findRoot(source, mode)
                 .orElseThrow { IllegalArgumentException("Цепочка для источника $source, режим $mode не найдена") }
         ) { it.child }.toList()
     }
 
-    override fun getModes(source: Source): List<String> {
-        return aiArticleProcessingNodesRepository
-            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(source)
-            .map { it.mode }
-    }
-
-    override fun getModes(source: Source, page: Int): Page<String> {
-        return aiArticleProcessingNodesRepository
-            .findAllBySourceAndParentIsNullAndSourceDeletedIsFalse(
-                source, PageRequest.of(
+    override fun getModes(source: Source?, page: Int): Page<String> {
+        return chainedAiArticleProcessingNodesRepository
+            .findModes(
+                source,
+                PageRequest.of(
                     page - 1,
                     Page.DEFAULT_PAGE_SIZE
                 )
-            ).let {
+            )
+            .let {
                 Page(
                     it.totalPages,
                     it.content.map { rootNode -> rootNode.mode }
@@ -77,10 +68,10 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     @Transactional
     override fun createChain(
-        source: Source,
+        source: Source?,
         mode: String
     ): List<ChainedAIArticleProcessingNode> {
-        val lock = locks.get(Pair(source.id, mode))
+        val lock = locks.get(Pair(source?.id, mode))
 
         lock.withLock {
             LOG.info("Создание цепочки для источника $source, режим $mode")
@@ -90,7 +81,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             rootNode.child = formattingNode
             formattingNode.parent = rootNode
 
-            return aiArticleProcessingNodesRepository.saveAll(
+            return chainedAiArticleProcessingNodesRepository.saveAll(
                 listOf(rootNode, formattingNode)
             ).also {
                 LOG.info("Создана цепочка для источника $it")
@@ -100,12 +91,12 @@ internal open class SimpleAIArticleProcessingNodesFacade(
 
     @Transactional
     override fun deleteChain(
-        source: Source,
+        source: Source?,
         mode: String
     ): Boolean {
         LOG.info("Удаление цепочки для источника $source, режим $mode")
 
-        return (aiArticleProcessingNodesRepository
+        return (chainedAiArticleProcessingNodesRepository
             .deleteAllBySourceAndMode(source, mode) > 0).also {
             LOG.info("Удалена цепочка для источника $it")
         }
@@ -119,14 +110,14 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         LOG.info("Добавление узла в цепочку обработки")
 
         // Find existing
-        val previousNode = aiArticleProcessingNodesRepository
+        val previousNode = chainedAiArticleProcessingNodesRepository
             .findById(prevNodeId)
             .orElseThrow { IllegalArgumentException("Предшествующий узел с id=${prevNodeId} не найден") }
         val nextNode = previousNode.child
         LOG.info("Добавление узла $input, идущего за $previousNode")
 
         // Lock whole chain
-        val lock = locks.get(Pair(previousNode.source.id, previousNode.mode))
+        val lock = locks.get(Pair(previousNode.source?.id, previousNode.mode))
 
         lock.withLock {
             // Insert new
@@ -146,7 +137,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
                 nextNode.parent = newNode
             }
 
-            return aiArticleProcessingNodesRepository.saveAll(
+            return chainedAiArticleProcessingNodesRepository.saveAll(
                 listOfNotNull(previousNode, newNode, nextNode)
             )[1].also {
                 LOG.info("Добавлен узел $newNode после узла $previousNode")
@@ -160,7 +151,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         LOG.info("Удаление узла $nodeId")
 
         // Find existing
-        val existingNode = aiArticleProcessingNodesRepository
+        val existingNode = chainedAiArticleProcessingNodesRepository
             .findById(nodeId)
             .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
         val previousNode = existingNode.parent
@@ -168,7 +159,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         LOG.info("Удаляемый узел $existingNode")
 
         // Lock whole chain
-        val lock = locks.get(Pair(existingNode.source.id, existingNode.mode))
+        val lock = locks.get(Pair(existingNode.source?.id, existingNode.mode))
 
         lock.withLock {
             // Update links
@@ -178,10 +169,10 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             } else if (nextNode != null) {
                 nextNode.parent = null
             }
-            aiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, nextNode))
+            chainedAiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, nextNode))
 
             // Delete node
-            aiArticleProcessingNodesRepository.delete(existingNode)
+            chainedAiArticleProcessingNodesRepository.delete(existingNode)
 
             return true.also {
                 LOG.info(
@@ -205,7 +196,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         LOG.info("Обновление узла $nodeId: $input")
 
         // Find existing
-        val existingNode = aiArticleProcessingNodesRepository
+        val existingNode = chainedAiArticleProcessingNodesRepository
             .findById(nodeId)
             .orElseThrow { IllegalArgumentException("Узел с id=${nodeId} не найден") }
         LOG.info("Обновляемый узел: $existingNode")
@@ -215,7 +206,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         input.model.ifPresent { existingNode.model = it }
         input.temperature.ifPresent { existingNode.temperature = it }
 
-        return aiArticleProcessingNodesRepository.save(existingNode).also {
+        return chainedAiArticleProcessingNodesRepository.save(existingNode).also {
             LOG.info("Обновлён узел $existingNode")
         }
     }
@@ -234,7 +225,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
                 """.trimIndent().trimMargin()
         ) : AIArticleProcessingNode
 
-        private fun createInitialRootNode(source: Source, mode: String): ChainedAIArticleProcessingNode {
+        private fun createInitialRootNode(source: Source?, mode: String): ChainedAIArticleProcessingNode {
             return ChainedAIArticleProcessingNode(
                 source,
                 mode,
@@ -254,7 +245,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             )
         }
 
-        private fun createInitialFormattingNode(source: Source, mode: String): ChainedAIArticleProcessingNode {
+        private fun createInitialFormattingNode(source: Source?, mode: String): ChainedAIArticleProcessingNode {
             return ChainedAIArticleProcessingNode(
                 source,
                 mode,

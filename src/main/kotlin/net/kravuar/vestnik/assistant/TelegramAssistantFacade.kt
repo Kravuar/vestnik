@@ -22,7 +22,6 @@ import dev.inmo.tgbotapi.extensions.behaviour_builder.utils.SimpleFilter
 import dev.inmo.tgbotapi.extensions.utils.extensions.sameMessage
 import dev.inmo.tgbotapi.extensions.utils.formatting.boldHTML
 import dev.inmo.tgbotapi.extensions.utils.formatting.hashTagHTML
-import dev.inmo.tgbotapi.extensions.utils.formatting.italicHTML
 import dev.inmo.tgbotapi.extensions.utils.formatting.strikethroughHTML
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
@@ -121,33 +120,33 @@ internal class TelegramAssistantFacade(
         val args: List<Arg>,
     ) {
         SHOW_SOURCES("show_sources", "Показать список источников", emptyList()),
-        SHOW_SOURCE("show_source", "Показать источник", listOf()),
+        SHOW_SOURCE("show_source", "Показать источник", listOf(Arg("name", "Имя источника"))),
         ADD_SOURCE("add_source", "Добавить источник", emptyList()),
         DELETE_SOURCE("delete_source", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
         UPDATE_SOURCE("update_source", "Обновить источник", emptyList()),
         SHOW_CHANNELS("show_channels", "Показать список каналов", emptyList()),
         ADD_CHANNEL("add_channel", "Добавить канал", emptyList()),
         DELETE_CHANNEL("delete_channel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
-        SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", emptyList()),
+        SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", listOf(Arg("source", "Имя источника", true))),
         SHOW_MODES(
             "show_modes",
             "Показать режимы обработки статей для источника",
-            listOf(Arg("name", "Имя источника"))
+            listOf(Arg("source", "Имя источника", true))
         ),
         SHOW_CHAIN(
             "show_chain",
             "Показать конкретную цепочку",
-            listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
+            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
         ),
         ADD_CHAIN(
             "add_chain",
-            "Добавить цепочку обработки статьи",
-            listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
+            "Добавить цепочку обработки статьи для конкретного источника",
+            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
         ),
         DELETE_CHAIN(
             "delete_chain",
             "Удалить цепочку обработки статьи",
-            listOf(Arg("sourceName", "Имя источника"), Arg("mode", "Имя режима"))
+            listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
         ),
         ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
         DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
@@ -156,8 +155,17 @@ internal class TelegramAssistantFacade(
 
         data class Arg(
             val name: String,
-            val description: String
-        )
+            val description: String,
+            val optional: Boolean = false
+        ) {
+            override fun toString(): String {
+                return description + if (optional) {
+                    " (опционален)"
+                } else {
+                    ""
+                }
+            }
+        }
     }
 
     internal suspend fun start(): Job {
@@ -187,6 +195,41 @@ internal class TelegramAssistantFacade(
                 }
             }
         }) {
+
+            // ARTICLE MODES PAGINATION
+            onMessageDataCallbackQuery(
+                dataRegex = ARTICLE_PAGINATION_REGEX,
+                initialFilter = adminCallbackFilter,
+                markerFactory = null,
+            ) { processCallback ->
+                val data = processCallback.data.substringAfter("_")
+                val (id, page) = getArticlePaginationData(data)
+                LOG.info("Обработки pagination для статьи id=$id, page=$page, messageId=${processCallback.message.messageId}")
+
+                // Process
+                val article = articlesFacade.getArticle(id)
+
+                // TODO: externalize function, use here, channels selection and other
+//                val callbackData = processArticlePaginationCallbackData(
+//                    ArticlePaginationData(
+//                        id,
+//                        1
+//                    )
+//                )
+//                bot.send(
+//                    chatId = adminChannel,
+//                    text = newArticleMessage(article),
+//                    markup = with(paginationMarkup(
+//                        1,
+//                        modesPage.totalPages,
+//                        callbackData
+//                    )) {
+//                        this?.let {
+//                            articleReplyMarkup(id, modesPage.content) + it
+//                        } ?: articleReplyMarkup(id, modesPage.content)
+//                    },
+//                )
+            }
 
             // MAIN PROCESS ARTICLE HANDLER
             onMessageDataCallbackQuery(
@@ -222,7 +265,7 @@ internal class TelegramAssistantFacade(
                             "Name" to it.name,
                             "URL" to it.url,
                             "Периодичность" to it.scheduleDelay.toKotlinDuration().toString(),
-                            "Приостановлен" to it.suspended,
+                            "Приостановлен" to if (it.suspended == true) { "да" } else { "нет" },
                             "Удалён" to it.deleted
                         )
                     })
@@ -275,7 +318,7 @@ internal class TelegramAssistantFacade(
                                 "Периодичность" to source.scheduleDelay.toKotlinDuration().toString(),
                                 "XPATH к контенту" to source.contentXPath,
                                 "Целевые Каналы" to source.channels.joinToString { channel -> channel.name },
-                                "Приостановлен" to source.suspended,
+                                "Приостановлен" to if (source.suspended == true) { "да" } else { "нет" },
                             )
                         )
                         "Источник ${argsByName["name"]!!}:" +
@@ -521,19 +564,23 @@ internal class TelegramAssistantFacade(
                 )
             }
 
-            onCommand(
+            onCommandWithArgs(
                 command = Command.SHOW_CHAINS.commandName,
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
-            ) { userMessage ->
-                val pageSupplier = { page: Int ->
-                    val chains = aiArticleProcessingNodesFacade.getChains(page)
+            ) { userMessage, args ->
+                val pageSupplier = { source: String?, page: Int ->
+                    val chains = aiArticleProcessingNodesFacade.getChains(
+                        source?.let { sourcesFacade.getSourceByName(source) },
+                        page
+                    )
                     val chainsAsString = writeForMessage(chains.content.map {
-                        mapOf(
+                        mutableMapOf(
                             "Id Корня" to it.id,
-                            "Источник" to it.source.name,
                             "Режим" to it.mode,
-                        )
+                        ).also { map ->
+                            it.source?.run { map["Источник"] = name }
+                        }
                     })
 
                     MessageWithReplyMarkup(
@@ -547,12 +594,12 @@ internal class TelegramAssistantFacade(
                 }
                 handleCallbackCommand(
                     Command.SHOW_CHAINS,
-                    null,
+                    args,
                     { PAGE_REGEX.matches(it) },
-                    { _ -> pageSupplier(1) },
+                    { argsByName -> pageSupplier(argsByName["source"], 1) },
                     userMessage,
-                    { _, message, callback ->
-                        val page = pageSupplier(callback.toInt())
+                    { argsByName, message, callback ->
+                        val page = pageSupplier(argsByName["source"], callback.toInt())
                         edit(
                             message = message,
                             text = page.message,
@@ -567,13 +614,13 @@ internal class TelegramAssistantFacade(
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                val pageSupplier = { sourceName: String, page: Int ->
+                val pageSupplier = { source: String?, page: Int ->
                     val modes = aiArticleProcessingNodesFacade.getModes(
-                        sourcesFacade.getSourceByName(sourceName),
+                        source?.let { sourcesFacade.getSourceByName(source) },
                         page
                     )
                     MessageWithReplyMarkup(
-                        "Список режимов для источника $sourceName" + if (modes.content.isNotEmpty()) {
+                        "Список режимов для источника $source" + if (modes.content.isNotEmpty()) {
                             ": " + modes.content.joinToString()
                         } else {
                             " пуст"
@@ -587,15 +634,13 @@ internal class TelegramAssistantFacade(
                     { PAGE_REGEX.matches(it) },
                     { argsByName ->
                         pageSupplier(
-                            requireNotNull(argsByName["name"]) {
-                                "Имя источника не может отсутствовать"
-                            },
+                            argsByName["source"],
                             1
                         )
                     },
                     userMessage,
                     { argsByName, message, callback ->
-                        val page = pageSupplier(argsByName["name"]!!, callback.toInt())
+                        val page = pageSupplier(argsByName["source"], callback.toInt())
                         edit(
                             message = message,
                             text = page.message,
@@ -616,9 +661,7 @@ internal class TelegramAssistantFacade(
                     args,
                     { argsByName ->
                         aiArticleProcessingNodesFacade.getChain(
-                            sourcesFacade.getSourceByName(requireNotNull(argsByName["sourceName"]) {
-                                "Имя источника является обязательным"
-                            }),
+                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
                     },
@@ -632,7 +675,9 @@ internal class TelegramAssistantFacade(
                                 "Промпт" to it.prompt,
                             )
                         })
-                        "Цепочка для источника ${argsByName["sourceName"]!!}, режима ${argsByName["mode"]!!} (${chain.size} узлов):" +
+                        "Цепочка (${chain.size} узлов) для режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
+                            ", источника $it:"
+                        } ?: ":") +
                                 "\n" +
                                 chainAsString
                     },
@@ -651,13 +696,15 @@ internal class TelegramAssistantFacade(
                     args,
                     { argsByName ->
                         aiArticleProcessingNodesFacade.createChain(
-                            sourcesFacade.getSourceByName(requireNotNull(argsByName["sourceName"]) {
-                                "Имя источника является обязательным"
-                            }),
+                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
                     },
-                    { argsByName, _ -> "Цепочка обработки источника ${argsByName["sourceName"]!!} с именем режима ${argsByName["mode"]!!} создана" },
+                    { argsByName, _ ->
+                        "Создана цепочка обработки источника с именем режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
+                            ", источника $it"
+                        } ?: "")
+                    },
                     { _ -> "Не удалось добавить цепочку обработки новостей" }
                 )
             }
@@ -673,13 +720,15 @@ internal class TelegramAssistantFacade(
                     args,
                     { argsByName ->
                         aiArticleProcessingNodesFacade.deleteChain(
-                            sourcesFacade.getSourceByName(requireNotNull(argsByName["sourceName"]) {
-                                "Имя источника является обязательным"
-                            }),
+                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
                     },
-                    { argsByName, _ -> "Цепочка обработки источника ${argsByName["sourceName"]!!} с именем режима ${argsByName["mode"]!!} удалена" },
+                    { argsByName, _ ->
+                        "Удалена цепочка обработки с именем режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
+                            ", источника $it"
+                        } ?: "")
+                    },
                     { _ -> "Не удалось удалить цепочку обработки новостей" }
                 )
             }
@@ -717,7 +766,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} добавлен в цепочку источника ${node.source.name}, режима ${node.mode}" },
+                    { _, node -> "Узел ${node.id} добавлен в цепочку для режима ${node.mode}" + node.source?.let { ", источника ${it.name}" } },
                     { "Не удалось добавить узел" },
                 )
             }
@@ -780,7 +829,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} обновлён в цепочке источника ${node.source.name}, режима ${node.mode}" },
+                    { _, node -> "Узел ${node.id} обновлён в цепочке режима ${node.mode}" + node.source?.let { ", источника ${it.name}" } },
                     { "Не удалось обновить узел" },
                 )
             }
@@ -790,7 +839,7 @@ internal class TelegramAssistantFacade(
                     BotCommand(
                         command.commandName,
                         command.description + if (command.args.isNotEmpty()) {
-                            " аргументы: ${command.args.joinToString(", ") { it.description }}"
+                            " аргументы: ${command.args.joinToString(", ") { it.toString() }}"
                         } else {
                             ""
                         }
@@ -813,12 +862,28 @@ internal class TelegramAssistantFacade(
 
     override fun notifyNewArticle(article: Article) {
         LOG.info("Оповещение о новой статье $article")
+
         runBlocking {
             val id = requireNotNull(article.id) { "ID обрабатываемой статьи не может отсутствовать." }
+            val modesPage = processedArticlesFacade.getModes(article, 1)
+            val callbackData = processArticlePaginationCallbackData(
+                    ArticlePaginationData(
+                    id,
+                    1
+                )
+            )
             bot.send(
                 chatId = adminChannel,
                 text = newArticleMessage(article),
-                markup = articleReplyMarkup(id, processedArticlesFacade.getModes(article)),
+                markup = with(paginationMarkup(
+                    1,
+                    modesPage.totalPages,
+                    callbackData
+                )) {
+                    this?.let {
+                        articleReplyMarkup(id, modesPage.content) + it
+                    } ?: articleReplyMarkup(id, modesPage.content)
+                },
             )
         }
     }
@@ -982,7 +1047,7 @@ internal class TelegramAssistantFacade(
         }.subscribeSafelyWithoutExceptions(this) { textMessage ->
             launch {
                 // Launch parallel processing of regenerated article
-                processedArticleMessage(
+                processedArticleHandling(
                     processedArticlesFacade.reprocessArticle(processedArticle.id!!, textMessage.content.text)
                 )
             }
@@ -1013,22 +1078,21 @@ internal class TelegramAssistantFacade(
         command: Command,
         args: Array<String>?,
         callbackRegex: Predicate<String>,
-        replyMessageInit: (Map<String, String>) -> MessageWithReplyMarkup,
+        replyMessageInit: (Map<String, String?>) -> MessageWithReplyMarkup,
         userMessage: TextMessage,
-        callback: suspend (Map<String, String>, ContentMessage<TextContent>, String) -> Unit,
+        callback: suspend (Map<String, String?>, ContentMessage<TextContent>, String) -> Unit,
         unknownCallback: ((ContentMessage<TextContent>, String) -> Unit)? = null,
     ) {
         val argsAsMap = args?.let {
-            if (command.args.size != it.size) {
-                reply(
-                    message = userMessage,
-                    text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
+            try {
+                parseArgs(command.args, it)
+            } catch (exception: Exception) {
+                throw ReplyableException(
+                    userMessage,
+                    exception.message ?: "Не удалось прочитать аргументы команды",
+                    exception
                 )
             }
-            it.withIndex().associateBy(
-                { arg -> command.args[arg.index].name },
-                { arg -> arg.value }
-            )
         } ?: emptyMap()
 
         // Send initial message
@@ -1072,20 +1136,19 @@ internal class TelegramAssistantFacade(
         command: Command,
         userMessage: TextMessage,
         args: Array<String>,
-        action: (Map<String, String>) -> T,
-        successMessage: (Map<String, String>, T) -> String,
-        errorMessage: (Map<String, String>) -> String
+        action: (Map<String, String?>) -> T,
+        successMessage: (Map<String, String?>, T) -> String,
+        errorMessage: (Map<String, String?>) -> String
     ) {
-        if (command.args.size != args.size) {
-            reply(
-                message = userMessage,
-                text = "Ожидались следующие аргументы: ${command.args.joinToString()}"
+        val argsAsMap = try {
+            parseArgs(command.args, args)
+        } catch (exception: Exception) {
+            throw ReplyableException(
+                userMessage,
+                exception.message ?: "Не удалось прочитать аргументы команды",
+                exception
             )
         }
-        val argsAsMap = args.withIndex().associateBy(
-            { command.args[it.index].name },
-            { it.value }
-        )
 
         handleCommand(
             command,
@@ -1184,6 +1247,28 @@ internal class TelegramAssistantFacade(
         private val INPUT_REGEX =
             Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
 
+        private fun parseArgs(commandArgs: List<Command.Arg>, args: Array<String>): Map<String, String?> {
+            if (commandArgs.size != args.size) {
+                throw IllegalArgumentException("Ожидались следующие аргументы: ${commandArgs.joinToString()}")
+            }
+            return args.withIndex().associateBy(
+                { arg -> commandArgs[arg.index].name },
+                { arg ->
+                    if (commandArgs[arg.index].optional) {
+                        arg.value.let { value ->
+                            if (value == "null") {
+                                null
+                            } else {
+                                value
+                            }
+                        }
+                    } else {
+                        arg.value
+                    }
+                }
+            )
+        }
+
         private fun parseStringToMap(input: String): Map<String, String> {
 
             val map = mutableMapOf<String, String>()
@@ -1274,13 +1359,14 @@ internal class TelegramAssistantFacade(
             return inlineKeyboard {
                 row {
                     modes.map { mode ->
-                        dataButton(mode, processArticleCallbackData(ProcessArticleData(mode, articleId)))
+                        dataButton("Режим $mode", processArticleCallbackData(ProcessArticleData(mode, articleId)))
                     }
                 }
             }
         }
 
         private fun primaryChannelSelectionReplyMarkup(channels: Collection<Channel>): InlineKeyboardMarkup {
+            // TODO: pagination
             return inlineKeyboard {
                 channels.chunked(2).forEach { chunk ->
                     row {
@@ -1314,6 +1400,7 @@ internal class TelegramAssistantFacade(
         }
 
         private fun postReplyMarkup(channels: Collection<Channel>, selected: Set<Long>): InlineKeyboardMarkup {
+            // TODO: pagination
             return inlineKeyboard {
                 channels.chunked(2).forEach { chunk ->
                     row {
@@ -1339,38 +1426,39 @@ internal class TelegramAssistantFacade(
         }
 
         private val PAGE_REGEX = Regex("^[1-9]\\d*\$")
-        private fun paginationMarkup(currentPage: Int, totalPages: Int): InlineKeyboardMarkup? {
-            if (currentPage < 1) {
-                throw IllegalArgumentException("Невалидное значение страницы: $currentPage/$totalPages")
-            }
+        private fun paginationMarkup(currentPage: Int, totalPages: Int, dataPrefix: String = ""): InlineKeyboardMarkup? {
             if (totalPages == 0) {
                 return null
+            }
+
+            if (currentPage < 1) {
+                throw IllegalArgumentException("Невалидное значение страницы: $currentPage/$totalPages")
             }
 
             return inlineKeyboard {
                 row {
                     if (currentPage > 2) {
-                        dataButton("⏪ 1", "1")
+                        dataButton("⏪ 1", dataPrefix + "1")
                     }
 
                     // Previous page button (if applicable)
                     if (currentPage > 1) {
                         val prev = (currentPage - 1).toString()
-                        dataButton(prev, prev)
+                        dataButton(prev, dataPrefix + prev)
                     }
 
                     // Current page (highlighted)
-                    dataButton("\uD83D\uDD39 $currentPage \uD83D\uDD39", "current")
+                    dataButton("\uD83D\uDD39 $currentPage \uD83D\uDD39", dataPrefix + currentPage)
 
                     // Next page button (if applicable)
                     if (currentPage < totalPages) {
                         val next = (currentPage + 1).toString()
-                        dataButton(next, next)
+                        dataButton(next, dataPrefix + next)
                     }
 
                     // Last page button (only if currentPage is far from the last page)
                     if (currentPage < totalPages - 1) {
-                        dataButton("⏩ $totalPages", totalPages.toString())
+                        dataButton("⏩ $totalPages", dataPrefix + totalPages.toString())
                     }
                 }
             }
@@ -1384,6 +1472,28 @@ internal class TelegramAssistantFacade(
             val mode: String,
             val articleId: Long
         )
+
+        data class ArticlePaginationData(
+            val articleId: Long,
+            val page: Int,
+        )
+
+        private val ARTICLE_PAGINATION_REGEX = Regex("PA_.*?_.*")
+        private fun processArticlePaginationCallbackData(articleData: ArticlePaginationData): String {
+            return "AP_${articleData.articleId}_${articleData.page}"
+        }
+
+        private fun getArticlePaginationData(data: String): ArticlePaginationData {
+            return data
+                .substringAfter("AP_")
+                .split("_").let {
+                    ArticlePaginationData(
+                        it[0].toLong(),
+                        it[1].toInt(),
+                    )
+                }
+        }
+
 
         private val PROCESS_ARTICLE_REGEX = Regex("PA_.*?_.*")
         private fun processArticleCallbackData(articleData: ProcessArticleData): String {

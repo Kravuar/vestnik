@@ -7,17 +7,15 @@ import java.util.Optional
 interface AIArticleProcessingNodesFacade {
     data class ChainInfo(
         val id: Long,
-        val source: Source,
+        val source: Source?,
         val mode: String,
     )
-    fun getChains(): List<ChainInfo>
-    fun getChains(page: Int): Page<ChainInfo>
-    fun getChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
-    fun getModes(source: Source): List<String>
-    fun getModes(source: Source, page: Int): Page<String>
+    fun getChains(source: Source? = null, page: Int): Page<ChainInfo>
+    fun getChain(source: Source? = null, mode: String): List<ChainedAIArticleProcessingNode>
+    fun getModes(source: Source? = null, page: Int): Page<String>
 
-    fun createChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
-    fun deleteChain(source: Source, mode: String): Boolean
+    fun createChain(source: Source? = null, mode: String): List<ChainedAIArticleProcessingNode>
+    fun deleteChain(source: Source? = null, mode: String): Boolean
 
     data class AIArticleProcessingNodeInput(
         var prompt: Optional<String> = Optional.empty(),
