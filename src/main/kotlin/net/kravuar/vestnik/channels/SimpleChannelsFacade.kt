@@ -55,6 +55,7 @@ internal open class SimpleChannelsFacade(
     override fun getChannelByName(name: String): Channel {
         return channelRepository
             .findByName(name)
+            .orElseThrow { IllegalArgumentException("Канал с именем $name не найден") }
     }
 
     @Transactional
@@ -73,11 +74,11 @@ internal open class SimpleChannelsFacade(
     }
 
     @Transactional
-    override fun deleteChannel(name: String): Channel {
+    override fun deleteChannel(name: String): Boolean {
         LOG.info("Удаление канала: $name")
         return channelRepository.deleteByName(name).also {
             LOG.info("Удалён канал: $it")
-        }
+        } > 0
     }
 
     override fun postArticle(

@@ -6,13 +6,12 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToOne
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.source.Source
-import org.hibernate.annotations.JdbcTypeCode
-import org.hibernate.type.SqlTypes
 
 interface AIArticleProcessingNode {
     var model: String
@@ -36,7 +35,7 @@ class ChainedAIArticleProcessingNode(
     override var temperature: Double,
     @NotBlank
     @Column(nullable = false)
-    @JdbcTypeCode(SqlTypes.CLOB)
+    @Lob
     override var prompt: String,
     @OneToOne(fetch = FetchType.LAZY)
     var parent: ChainedAIArticleProcessingNode? = null,

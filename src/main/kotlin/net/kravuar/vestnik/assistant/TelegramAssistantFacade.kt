@@ -156,6 +156,7 @@ internal class TelegramAssistantFacade(
 
     internal suspend fun start(): Job {
         val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
+            LOG.error("Ошибка во время работы ассистента", it)
             when (it) {
                 is MessageIsNotModifiedException -> {
                     LOG.warn("Ошибка модификации сообщения", it)
@@ -212,7 +213,9 @@ internal class TelegramAssistantFacade(
                     MessageWithReplyMarkup(
                         "Список источников" + if (sources.content.isNotEmpty()) {
                             "\n" + sourcesAsString
-                        } else { " пуст"},
+                        } else {
+                            " пуст"
+                        },
                         paginationMarkup(page, sources.totalPages)
                     )
                 }
@@ -381,7 +384,13 @@ internal class TelegramAssistantFacade(
                             requireNotNull(argsByName["name"]) { "Имя источника является обязательным" }
                         )
                     },
-                    { _, source -> "Источник ${source.name} удален" },
+                    { argsByName, deleted ->
+                        if (deleted) {
+                            "Источник ${argsByName["name"]!!} удален"
+                        } else {
+                            "Не найдено источника с именем ${argsByName["name"]!!} для удаления"
+                        }
+                    },
                     { _ -> "Не удалось удалить источник" }
                 )
             }
@@ -406,7 +415,9 @@ internal class TelegramAssistantFacade(
                     MessageWithReplyMarkup(
                         "Список каналов" + if (channels.content.isNotEmpty()) {
                             "\n" + channelsAsString
-                        } else { " пуст"},
+                        } else {
+                            " пуст"
+                        },
                         paginationMarkup(page, channels.totalPages)
                     )
                 }
@@ -482,7 +493,13 @@ internal class TelegramAssistantFacade(
                             requireNotNull(argsByName["name"]) { "Имя канала является обязательным" }
                         )
                     },
-                    { _, channel -> "Канал ${channel.name} удален" },
+                    { argsByName, deleted ->
+                        if (deleted) {
+                            "Канал ${argsByName["name"]!!} удален"
+                        } else {
+                            "Не найдено канала с именем ${argsByName["name"]!!} для удаления"
+                        }
+                    },
                     { _ -> "Не удалось удалить канал" }
                 )
             }
@@ -505,7 +522,9 @@ internal class TelegramAssistantFacade(
                     MessageWithReplyMarkup(
                         "Список цепочек обработки новости" + if (chains.content.isNotEmpty()) {
                             "\n" + chainsAsString
-                        } else { " пуст"},
+                        } else {
+                            " пуст"
+                        },
                         paginationMarkup(page, chains.totalPages)
                     )
                 }
@@ -539,7 +558,9 @@ internal class TelegramAssistantFacade(
                     MessageWithReplyMarkup(
                         "Список режимов для источника $sourceName" + if (modes.content.isNotEmpty()) {
                             ": " + modes.content.joinToString()
-                        } else {" пуст"},
+                        } else {
+                            " пуст"
+                        },
                         paginationMarkup(page, modes.totalPages)
                     )
                 }
@@ -590,11 +611,11 @@ internal class TelegramAssistantFacade(
                                 "Id узла" to it.id,
                                 "Модель" to it.model,
                                 "Температура" to it.temperature,
-                                "Промпт" to it.prompt,
                                 "Размер промпта" to it.prompt.length,
+                                "Промпт" to it.prompt,
                             )
                         })
-                        "Цепочка для источника ${argsByName["sourceName"]!!}, режима ${argsByName["mode"]!!} (${chainAsString.length} узлов):" +
+                        "Цепочка для источника ${argsByName["sourceName"]!!}, режима ${argsByName["mode"]!!} (${chain.size} узлов):" +
                                 "\n" +
                                 chainAsString
                     },
@@ -698,7 +719,13 @@ internal class TelegramAssistantFacade(
                             "ID удаляемого узла является обязательным"
                         }.toLong())
                     },
-                    { _, node -> "Узел ${node.id} удалён в цепочке источника ${node.source.name}, режима ${node.mode}" },
+                    { argsByName, deleted ->
+                        if (deleted) {
+                            "Узел ${argsByName["id"]!!} удален"
+                        } else {
+                            "Не найдено узла с id ${argsByName["id"]!!} для удаления"
+                        }
+                    },
                     { _ -> "Не удалось удалить узел обработки" }
                 )
             }
@@ -1112,22 +1139,24 @@ internal class TelegramAssistantFacade(
                         text = successMessage(it)
                     )
                 } catch (e: Exception) {
-                    LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}", e)
+                    LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}")
+                    throw e
                 }
             }
         } catch (actionException: Exception) {
-            LOG.error("Ошибка команды ${command.commandName}, сообщение $userMessage", actionException)
+            LOG.error("Ошибка команды ${command.commandName}, сообщение $userMessage")
             try {
                 reply(
                     message = userMessage,
                     text = "${errorMessage()}: ${actionException.message}"
                 )
             } catch (exception: Exception) {
-                LOG.error(
-                    "Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage",
-                    exception
-                )
+                LOG.error("Не удалось оповестить об ошибке команды ${command.commandName}, сообщение $userMessage")
+                throw exception.also {
+                    it.addSuppressed(actionException)
+                }
             }
+            throw actionException
         }
     }
 
@@ -1142,7 +1171,9 @@ internal class TelegramAssistantFacade(
         // PARSING/FORMATTING
         //
 
-        private val INPUT_REGEX = Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
+        private val INPUT_REGEX =
+            Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
+
         private fun parseStringToMap(input: String): Map<String, String> {
 
             val map = mutableMapOf<String, String>()
@@ -1173,7 +1204,7 @@ internal class TelegramAssistantFacade(
         }
 
         private fun writeForMessage(manyPairs: List<Map<String, Any?>>): String {
-            return manyPairs.joinToString(SPLIT) { writeForMessage(it) }
+            return manyPairs.joinToString("\n" + SPLIT) { writeForMessage(it) }
         }
 
         //
@@ -1181,34 +1212,28 @@ internal class TelegramAssistantFacade(
         //
 
         private fun newArticleMessage(article: Article): String {
-            return """Получена новая статья:
-
-            ${
-                writeForMessage(
-                    mapOf(
-                        "Id статьи" to article.id,
-                        "Источник" to article.source.name,
-                        "Заголовок" to article.title,
-                        "Описание" to article.description,
-                        "URL" to article.url
+            return "Получена новая статья:" +
+                    "\n" +
+                    writeForMessage(
+                        mapOf(
+                            "Id статьи" to article.id,
+                            "Источник" to article.source.name,
+                            "Заголовок" to article.title,
+                            "Описание" to article.description,
+                            "URL" to article.url
+                        )
                     )
-                )
-            }
-            """
         }
 
         private fun processedArticleMessage(processArticle: ProcessedArticle): String {
-            return """Результат обработки режимом ${processArticle.mode.boldHTML()}:
-
-            ${
-                writeForMessage(
-                    mapOf(
-                        "Id результата" to processArticle.id,
-                        "Содержание" to processArticle.content,
+            return "Результат обработки режимом ${processArticle.mode.boldHTML()}:" +
+                    "\n" +
+                    writeForMessage(
+                        mapOf(
+                            "Id результата" to processArticle.id,
+                            "Содержание" to processArticle.content,
+                        )
                     )
-                )
-            }
-            """
         }
 
         private fun articlePostedMessage(
@@ -1216,11 +1241,11 @@ internal class TelegramAssistantFacade(
             primaryChannel: Channel,
             forwardChannels: Collection<Channel>
         ): String {
-            return """Новость ${
-                processedArticle.id.toString().hashTagHTML()
-            } опубликована в ${primaryChannel.name.boldHTML()}
-            и переслана в ${forwardChannels.joinToString { it.name.boldHTML() }}
-            """.trimIndent()
+            return "Новость ${processedArticle.id.toString().hashTagHTML()}" +
+                    "\n" +
+                    "опубликована в ${primaryChannel.name.boldHTML()}" +
+                    "\n" +
+                    "и переслана в ${forwardChannels.joinToString { it.name.boldHTML() }}"
         }
 
         private fun primaryChannelSelectionMessage(): String {

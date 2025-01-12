@@ -1,6 +1,5 @@
 package net.kravuar.vestnik.processor
 
-import jakarta.persistence.EntityManager
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesRepository
 import net.kravuar.vestnik.processor.nodes.SimpleAIArticleProcessingNodesFacade
@@ -17,10 +16,8 @@ internal class ArticleProcessingConfig {
     @Bean
     fun aiArticleProcessingFacade(
         sourcesFacade: SourcesFacade,
-        entityManager: EntityManager,
         aiArticleProcessingNodesRepository: AIArticleProcessingNodesRepository
     ): AIArticleProcessingNodesFacade = SimpleAIArticleProcessingNodesFacade(
-        entityManager,
         aiArticleProcessingNodesRepository
     )
 

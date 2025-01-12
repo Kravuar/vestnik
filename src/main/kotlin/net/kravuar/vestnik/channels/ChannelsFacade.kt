@@ -34,6 +34,6 @@ interface ChannelsFacade {
     fun getChannelByName(name: String): Channel
 
     fun addChannel(input: ChannelInput): Channel
-    fun deleteChannel(name: String): Channel
+    fun deleteChannel(name: String): Boolean
     fun postArticle(processedArticle: ProcessedArticle, primaryChannel: Channel, forwardChannels: Collection<Channel>)
 }

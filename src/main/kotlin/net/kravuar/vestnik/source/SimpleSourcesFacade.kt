@@ -27,12 +27,12 @@ internal open class SimpleSourcesFacade(
                 .toList().also {
                     LOG.info(
                         "Получены новости из источника $sourceName: ${
-                        if (it.isNotEmpty()) {
-                            it.joinToString { article -> "${article.link} | ${article.title}" }
-                        } else {
-                            "Пусто"
-                        }
-                    }")
+                            if (it.isNotEmpty()) {
+                                it.joinToString { article -> "${article.link} | ${article.title}" }
+                            } else {
+                                "Пусто"
+                            }
+                        }")
                 }
         }
     }
@@ -74,11 +74,14 @@ internal open class SimpleSourcesFacade(
     }
 
     override fun getSourceByName(sourceName: String): Source {
-        return sourcesRepository.findByNameAndDeletedIsFalse(sourceName)
+        return sourcesRepository
+            .findByNameAndDeletedIsFalse(sourceName)
+            .orElseThrow { IllegalArgumentException("Источник $sourceName не найден") }
     }
 
     @Transactional
     override fun addSource(source: SourcesFacade.SourceInput): Source {
+        LOG.info("Добавление источника $source")
         return sourcesRepository.save(
             Source(
                 source.name.orElseThrow { IllegalArgumentException("Имя источника обязательно") },
@@ -102,23 +105,27 @@ internal open class SimpleSourcesFacade(
 
     @Transactional
     override fun updateSource(sourceName: String, input: SourcesFacade.SourceInput): Source {
-        return sourcesRepository.findByNameAndDeletedIsFalse(sourceName).apply {
-            input.url.ifPresent { this.url = it }
-            input.name.ifPresent { this.name = it }
-            input.scheduleDelay.ifPresent { this.scheduleDelay = it }
-            input.contentXPath.ifPresent { this.contentXPath = it }
-            input.suspended.ifPresent { this.suspended = it }
-            input.channels.ifPresent { this.channels = it }
-        }.also {
-            LOG.info("Обновлён источник $sourceName: $it")
-        }
+        LOG.info("Обновление источника $sourceName: $input")
+        return sourcesRepository.findByNameAndDeletedIsFalse(sourceName)
+            .orElseThrow { IllegalArgumentException("Источник $sourceName не найден") }
+            .apply {
+                input.url.ifPresent { this.url = it }
+                input.name.ifPresent { this.name = it }
+                input.scheduleDelay.ifPresent { this.scheduleDelay = it }
+                input.contentXPath.ifPresent { this.contentXPath = it }
+                input.suspended.ifPresent { this.suspended = it }
+                input.channels.ifPresent { this.channels = it }
+            }.also {
+                LOG.info("Обновлён источник $sourceName: $it")
+            }
     }
 
     @Transactional
-    override fun deleteSource(sourceName: String): Source {
+    override fun deleteSource(sourceName: String): Boolean {
+        LOG.info("Удаление источника $sourceName")
         return sourcesRepository.deleteByName(sourceName).also {
             LOG.info("Удалён источник $sourceName: $it")
-        }
+        } > 0
     }
 
     companion object {

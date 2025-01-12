@@ -17,7 +17,7 @@ interface AIArticleProcessingNodesFacade {
     fun getModes(source: Source, page: Int): Page<String>
 
     fun createChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
-    fun deleteChain(source: Source, mode: String): List<ChainedAIArticleProcessingNode>
+    fun deleteChain(source: Source, mode: String): Boolean
 
     data class AIArticleProcessingNodeInput(
         var prompt: Optional<String> = Optional.empty(),
@@ -26,6 +26,6 @@ interface AIArticleProcessingNodesFacade {
     )
     fun getReprocessNode(): AIArticleProcessingNode
     fun insertNode(prevNodeId: Long, input: AIArticleProcessingNodeInput): ChainedAIArticleProcessingNode
-    fun deleteNode(nodeId: Long): ChainedAIArticleProcessingNode
+    fun deleteNode(nodeId: Long): Boolean
     fun updateNode(nodeId: Long, input: AIArticleProcessingNodeInput): ChainedAIArticleProcessingNode
 }

@@ -43,5 +43,5 @@ interface SourcesFacade {
 
     fun addSource(source: SourceInput): Source
     fun updateSource(sourceName: String, input: SourceInput): Source
-    fun deleteSource(sourceName: String): Source
+    fun deleteSource(sourceName: String): Boolean
 }

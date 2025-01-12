@@ -45,7 +45,7 @@ internal class NotifyingSourcesFacade(
             .also { eventPublisher.publishEvent(EntityEvent.updated(this, it)) }
     }
 
-    override fun deleteSource(sourceName: String): Source {
+    override fun deleteSource(sourceName: String): Boolean {
         return sourcesFacade.deleteSource(sourceName)
             .also { eventPublisher.publishEvent(EntityEvent.deleted(this, it)) }
     }
