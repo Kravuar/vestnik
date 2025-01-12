@@ -1337,19 +1337,30 @@ internal class TelegramAssistantFacade(
                 return null
             }
 
-            val prev = (currentPage - 1).toString()
-            val current = currentPage.toString()
-            val next = (currentPage + 1).toString()
             return inlineKeyboard {
                 row {
-                    if (currentPage - 1 > 1) {
-                        dataButton("<< 1", "1")
+                    if (currentPage > 2) {
+                        dataButton("⏪ 1", "1")
+                    }
+
+                    // Previous page button (if applicable)
+                    if (currentPage > 1) {
+                        val prev = (currentPage - 1).toString()
                         dataButton(prev, prev)
                     }
-                    dataButton(current, current)
-                    if (currentPage + 1 <= totalPages) {
+
+                    // Current page (highlighted)
+                    dataButton("\uD83D\uDD39 $currentPage \uD83D\uDD39", "current")
+
+                    // Next page button (if applicable)
+                    if (currentPage < totalPages) {
+                        val next = (currentPage + 1).toString()
                         dataButton(next, next)
-                        dataButton(">> $totalPages", totalPages.toString())
+                    }
+
+                    // Last page button (only if currentPage is far from the last page)
+                    if (currentPage < totalPages - 1) {
+                        dataButton("⏩ $totalPages", totalPages.toString())
                     }
                 }
             }
