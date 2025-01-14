@@ -23,8 +23,8 @@ internal class BrightDataScrapper(
                 .header("Authorization", "Bearer $token")
                 .post()
 
-            val element = doc.selectXpath(xpath)
-            return element.text()
+            val element = doc.selectXpath(xpath).first()
+            return element?.text() ?: "Не найден элемент на странице $url, путь $xpath"
         } catch (e: Exception) {
             throw RuntimeException("Не удалось получить данные из страницы $url с xpath: $xpath", e)
         }

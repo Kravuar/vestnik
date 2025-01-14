@@ -49,8 +49,6 @@ import dev.inmo.tgbotapi.utils.PreviewFeature
 import dev.inmo.tgbotapi.utils.row
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import korlibs.time.minutes
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
@@ -213,8 +211,14 @@ internal class TelegramAssistantFacade(
                 val article = articlesFacade.getArticle(id)
                 var page = 1
                 var currentModesPage = processedArticlesFacade.getModes(article, page)
-                val modeMessage = send(
-                    chatId = adminChannel,
+                if (currentModesPage.totalPages == 0) {
+                    throw ReplyableException(
+                        replyTo = processCallback.message,
+                        message = "Отсутствуют режимы для обработки новости"
+                    )
+                }
+                val modeMessage = reply(
+                    message = processCallback.message,
                     text = selectArticleModeMessage(article),
                     markup = selectArticleModeMarkup(
                         currentModesPage.content,
@@ -915,7 +919,7 @@ internal class TelegramAssistantFacade(
         )
         val selected = mutableSetOf<Long>()
 
-        // Creating processed article message
+        // Edit message to contain processed article
         edit(
             message = handlerMessage,
             text = processedArticleMessage(processedArticle),
@@ -974,9 +978,12 @@ internal class TelegramAssistantFacade(
                                 it.id in selected
                             }
 
-                            // Select primary channel message
-                            val primaryChannelSelectionMessage = send(
-                                chatId = adminChannel,
+                            // Multi step form
+                            val finalFormMessage: AccessibleMessage
+
+                            // Select primary channel
+                            finalFormMessage = reply(
+                                message = handlerMessage,
                                 text = primaryChannelSelectionMessage(),
                                 markup = primaryChannelSelectionMarkup(selectedChannels)
                             )
@@ -987,25 +994,25 @@ internal class TelegramAssistantFacade(
                                     it.id == getSelectData(
                                         waitMessageDataCallbackQuery()
                                             .filter { callback ->
-                                                callback.message.sameMessage(primaryChannelSelectionMessage) && adminCallbackFilter.invoke(
+                                                callback.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(
                                                     callback
                                                 )
                                             }.first().data
                                     )
                                 }
 
-                                // Select delay message
+                                // Select delay
                                 var postDelay = Duration.ZERO
                                 val mediaList = mutableListOf<InputStream>()
-                                val finalPostMessage = send(
-                                    chatId = adminChannel,
+                                edit(
+                                    message = finalFormMessage,
                                     text = finalPostActionMessage(0),
                                     markup = finalPostActionMarkup(postDelay)
                                 )
 
                                 // Handle media attachment
                                 waitAnyContentMessage().filter {
-                                    it.replyTo?.sameMessage(finalPostMessage) ?: false && adminMessageFilter.invoke(it)
+                                    it.replyTo?.sameMessage(finalFormMessage) ?: false && adminMessageFilter.invoke(it)
                                 }.subscribeSafelyWithoutExceptions(this) { messageContent ->
                                     val contentToProcess: List<MediaContent> = with(messageContent.content) {
                                         when (this) {
@@ -1034,20 +1041,20 @@ internal class TelegramAssistantFacade(
 
                                     // Update message
                                     edit(
-                                        message = finalPostMessage,
+                                        message = finalFormMessage,
                                         text = finalPostActionMessage(mediaList.size)
                                     )
                                 }
 
                                 // Handle delay adjustment/final post action
                                 waitMessageDataCallbackQuery().filter {
-                                    it.message.sameMessage(finalPostMessage) && adminCallbackFilter.invoke(it)
+                                    it.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(it)
                                 }.onEach { delaySelectionCallback ->
                                     if (DELAY_DELTA_REGEX.matches(delaySelectionCallback.data)) {
                                         val deltaMinutes = delaySelectionCallback.data.toInt()
                                         postDelay = postDelay.plus(deltaMinutes.minutes)
                                         edit(
-                                            message = finalPostMessage,
+                                            message = finalFormMessage,
                                             text = finalPostActionMessage(mediaList.size),
                                             markup = finalPostActionMarkup(postDelay)
                                         )
@@ -1066,8 +1073,8 @@ internal class TelegramAssistantFacade(
                                     .filter { it != primaryChannel }
                                 channelsFacade.postArticle(processedArticle, primaryChannel, forwardChannels)
 
-                                reply(
-                                    message = primaryChannelSelectionMessage,
+                                edit(
+                                    message = finalFormMessage,
                                     text = articlePostedMessage(processedArticle, primaryChannel, forwardChannels)
                                 )
                             }
@@ -1367,7 +1374,9 @@ internal class TelegramAssistantFacade(
         }
 
         private fun selectArticleModeMessage(article: Article): String {
-            return "Выберите режим обработки статьи статьи id=${article.id} | ${article.title.boldHTML()}"
+            return "Выберите режим обработки статьи статьи id=${article.id}" +
+                    "\n" +
+                    article.title.boldHTML()
         }
 
         private fun processedArticleMessage(processArticle: ProcessedArticle): String {

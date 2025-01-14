@@ -21,13 +21,13 @@ internal interface ChainedAiArticleProcessingNodesRepository :
         """
         SELECT c
         FROM ChainedAIArticleProcessingNode c
-        WHERE
-            c.parent IS NULL
-            AND c.mode = :mode
-            AND (
-                    (:source IS NOT NULL AND c.source = :source AND c.source.deleted = FALSE)
-                    OR (:source IS NULL and c.source IS NULL)
-            )
+        LEFT JOIN c.source s
+        WHERE c.parent IS NULL
+          AND c.mode = :mode
+          AND (
+                (:source IS NULL AND s IS NULL) OR
+                (:source IS NOT NULL AND s = :source AND s.deleted = false)
+          )
     """
     )
     fun findRoot(
@@ -39,12 +39,13 @@ internal interface ChainedAiArticleProcessingNodesRepository :
         """
         SELECT c
         FROM ChainedAIArticleProcessingNode c
-        WHERE   
-            c.parent IS NULL
-            AND (
-                    (:source IS NOT NULL AND c.source = :source AND c.source.deleted = FALSE)
-                    OR (:source IS NULL and c.source IS NULL)
-            )
+        LEFT JOIN c.source s
+        WHERE c.parent IS NULL
+          AND c.mode = :mode
+          AND (
+                (:source IS NULL AND s IS NULL) OR
+                (:source IS NOT NULL AND s = :source AND s.deleted = false)
+          )
     """
     )
     fun findRoots(source: Source?, pageable: Pageable): Page<ChainedAIArticleProcessingNode>
@@ -53,15 +54,15 @@ internal interface ChainedAiArticleProcessingNodesRepository :
         """
         SELECT c
         FROM ChainedAIArticleProcessingNode c
-        WHERE
-            c.parent IS NULL
+        LEFT JOIN c.source s
+        WHERE c.parent IS NULL
             AND (
-                    (:source IS NOT NULL AND c.source = :source AND c.source.deleted = FALSE)
-                    OR (:source IS NULL and c.source IS NULL)
+                    s IS NULL OR                    
+                    s = :source AND s.deleted = FALSE
             )
     """
     )
-    fun findModes(
+    fun findAllModes(
         @Param("source") source: Source?,
         pageable: Pageable
     ): Page<ChainedAIArticleProcessingNode>

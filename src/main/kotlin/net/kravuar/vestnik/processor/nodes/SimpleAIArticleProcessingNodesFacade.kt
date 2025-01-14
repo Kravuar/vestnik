@@ -41,13 +41,13 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         return generateSequence(
             chainedAiArticleProcessingNodesRepository
                 .findRoot(source, mode)
-                .orElseThrow { IllegalArgumentException("Цепочка для источника $source, режим $mode не найдена") }
+                .orElseThrow { IllegalArgumentException("Цепочка для источника ${source?.name}, режим $mode не найдена") }
         ) { it.child }.toList()
     }
 
     override fun getModes(source: Source?, page: Int): Page<String> {
         return chainedAiArticleProcessingNodesRepository
-            .findModes(
+            .findAllModes(
                 source,
                 PageRequest.of(
                     page - 1,
@@ -74,7 +74,16 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         val lock = locks.get(Pair(source?.id, mode))
 
         lock.withLock {
-            LOG.info("Создание цепочки для источника $source, режим $mode")
+            if (chainedAiArticleProcessingNodesRepository.findRoot(source, mode).isPresent) {
+                throw IllegalArgumentException(
+                    "Цепочка для режима $mode" + if (source != null) {
+                        ", источника ${source.name}"
+                    } else {
+                        ""
+                    } + " уже существует"
+                )
+            }
+            LOG.info("Создание цепочки для источника ${source?.name}, режим $mode")
             val rootNode = createInitialRootNode(source, mode)
             val formattingNode = createInitialFormattingNode(source, mode)
 
@@ -84,7 +93,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             return chainedAiArticleProcessingNodesRepository.saveAll(
                 listOf(rootNode, formattingNode)
             ).also {
-                LOG.info("Создана цепочка для источника $it")
+                LOG.info("Создана цепочка ${it[0]}")
             }
         }
     }
@@ -94,7 +103,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         source: Source?,
         mode: String
     ): Boolean {
-        LOG.info("Удаление цепочки для источника $source, режим $mode")
+        LOG.info("Удаление цепочки для источника ${source?.name}, режим $mode")
 
         return (chainedAiArticleProcessingNodesRepository
             .deleteAllBySourceAndMode(source, mode) > 0).also {
@@ -144,7 +153,6 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             }
         }
     }
-
 
     @Transactional
     override fun deleteNode(nodeId: Long): Boolean {
