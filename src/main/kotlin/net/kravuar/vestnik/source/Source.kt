@@ -1,5 +1,6 @@
 package net.kravuar.vestnik.source
 
+import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType
@@ -24,7 +25,7 @@ class Source(
     @Column(nullable = false)
     @NotBlank
     var contentXPath: String,
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.EAGER, cascade = [CascadeType.PERSIST, CascadeType.MERGE])
     var channels: MutableSet<Channel> = HashSet(),
     @Column(nullable = false)
     var deleted: Boolean = false,

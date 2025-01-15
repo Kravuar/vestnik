@@ -22,10 +22,10 @@ import dev.inmo.tgbotapi.extensions.behaviour_builder.utils.SimpleFilter
 import dev.inmo.tgbotapi.extensions.utils.extensions.sameMessage
 import dev.inmo.tgbotapi.extensions.utils.formatting.boldHTML
 import dev.inmo.tgbotapi.extensions.utils.formatting.hashTagHTML
-import dev.inmo.tgbotapi.extensions.utils.formatting.strikethroughHTML
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.dataButton
 import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.extensions.utils.updates.retrieving.longPolling
+import dev.inmo.tgbotapi.extensions.utils.withContent
 import dev.inmo.tgbotapi.extensions.utils.withUserOrThrow
 import dev.inmo.tgbotapi.types.BotCommand
 import dev.inmo.tgbotapi.types.ChatId
@@ -46,8 +46,12 @@ import dev.inmo.tgbotapi.types.message.content.TextMessage
 import dev.inmo.tgbotapi.types.message.content.VideoContent
 import dev.inmo.tgbotapi.types.queries.callback.MessageCallbackQuery
 import dev.inmo.tgbotapi.utils.PreviewFeature
+import dev.inmo.tgbotapi.utils.extensions.toHtml
+import dev.inmo.tgbotapi.utils.internal.htmlSpoilerClosingControl
+import dev.inmo.tgbotapi.utils.internal.htmlSpoilerControl
 import dev.inmo.tgbotapi.utils.row
 import io.ktor.utils.io.jvm.javaio.toInputStream
+import korlibs.time.max
 import korlibs.time.minutes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -82,8 +86,9 @@ private data class MessageWithReplyMarkup(
     val replyMarkup: InlineKeyboardMarkup?
 )
 
-private class ReplyableException(
-    val replyTo: AccessibleMessage,
+private class AssistantActionException(
+    val replyTo: AccessibleMessage? = null,
+    val assistantMessage: ContentMessage<MessageContent>? = null,
     override val message: String,
     override val cause: Throwable? = null,
 ) : RuntimeException()
@@ -160,12 +165,12 @@ internal class TelegramAssistantFacade(
     private val adminChannel: ChatId = ChatId(RawChatId(adminChannelId))
     private val adminMessageFilter = SimpleFilter<CommonMessage<*>> {
         (it.chat.id == adminChannel && it.withUserOrThrow().user.id in admins).alsoIfFalse {
-            LOG.info("Сообщение не прошло проверку безопасности: $it")
+            LOG.warn("Сообщение не прошло проверку безопасности: $it")
         }
     }
     private val adminCallbackFilter = SimpleFilter<MessageCallbackQuery> {
         (it.message.chat.id == adminChannel && it.withUserOrThrow().user.id in admins).alsoIfFalse {
-            LOG.info("Callback не прошёл проверку безопасности: $it")
+            LOG.warn("Callback не прошёл проверку безопасности: $it")
         }
     }
 
@@ -177,26 +182,49 @@ internal class TelegramAssistantFacade(
                     LOG.warn("Ошибка модификации сообщения", it)
                 }
 
-                is ReplyableException -> {
+                is AssistantActionException -> {
                     try {
-                        bot.reply(
-                            message = it.replyTo,
-                            text = it.message
-                        )
-                    } catch (exception: Exception) {
+                        if (it.replyTo != null) {
+                            bot.reply(
+                                message = it.replyTo,
+                                text = it.message
+                            )
+                        } else {
+                            requireNotNull(it.assistantMessage) {
+                                "Не задано ни сообщение для reply, ни сообщение ассистента для редактирования"
+                            }.run {
+                                with(
+                                    this.withContent<TextContent>()
+                                        ?: throw IllegalStateException("Ошибка с сообщением для редактирования не содержит текстового контента")
+                                ) {
+                                    bot.edit(
+                                        message = this,
+                                        text = it.message +
+                                                "\n" +
+                                                this.content.text.boldHTML()
+                                    )
+                                }
+                            }
+                        }
+
+                    } catch (exception: Throwable) {
                         LOG.error("Не удалось оповестить об ошибке $it")
                     }
                 }
 
                 else -> {
-                    bot.send(
-                        chatId = adminChannel,
-                        text = "Произошла непредвиденная ошибка: ${it.message ?: it}"
-                    )
+                    LOG.error("Произошла непредвиденная ошибка: ${it.message ?: it}")
+                    try {
+                        bot.send(
+                            chatId = adminChannel,
+                            text = "Произошла непредвиденная ошибка: ${it.message ?: it}"
+                        )
+                    } catch (exception: Throwable) {
+                        LOG.error("Не удалось оповестить о непредвиденной ошибке: ${it.message ?: it}")
+                    }
                 }
             }
         }) {
-
             // MAIN PROCESS ARTICLE HANDLER
             onMessageDataCallbackQuery(
                 dataRegex = PROCESS_ARTICLE_REGEX,
@@ -212,8 +240,8 @@ internal class TelegramAssistantFacade(
                 var page = 1
                 var currentModesPage = processedArticlesFacade.getModes(article, page)
                 if (currentModesPage.totalPages == 0) {
-                    throw ReplyableException(
-                        replyTo = processCallback.message,
+                    throw AssistantActionException(
+                        assistantMessage = processCallback.message,
                         message = "Отсутствуют режимы для обработки новости"
                     )
                 }
@@ -251,6 +279,10 @@ internal class TelegramAssistantFacade(
                         ).toInt()]
                     }
                     // Process
+                    edit(
+                        message = modeMessage,
+                        text = "Обрабатываю статью в режиме $mode...",
+                    )
                     val processedArticle = processedArticlesFacade.processArticle(article, mode)
                     processedArticleHandling(modeMessage, processedArticle)
                 } catch (timeout: TimeoutCancellationException) {
@@ -263,7 +295,7 @@ internal class TelegramAssistantFacade(
                         message = modeMessage,
                         text = "[УСТАРЕЛО]".boldHTML() +
                                 "\n" +
-                                modeMessage.content.text.strikethroughHTML()
+                                modeMessage.content.text.spoilerHTML()
                     )
                 }
             }
@@ -691,7 +723,7 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     args,
                     { argsByName ->
-                        aiArticleProcessingNodesFacade.getChain(
+                        aiArticleProcessingNodesFacade.getChainMode(
                             argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
@@ -949,7 +981,7 @@ internal class TelegramAssistantFacade(
                 val processedArticleHandlerMainJob = waitMessageDataCallbackQuery().filter {
                     it.message.sameMessage(handlerMessage) && adminCallbackFilter.invoke(it)
                 }.subscribeSafelyWithoutExceptions(this) { processedArticleCallback ->
-                    LOG.info(
+                    LOG.debug(
                         "Callback на обработанной статье id=${processedArticle.id}: " +
                                 "messageId=${processedArticleCallback.message.messageId}, " +
                                 "data=${processedArticleCallback.data}"
@@ -990,15 +1022,17 @@ internal class TelegramAssistantFacade(
 
                             coroutineScope {
                                 // Primary channel selection handling
-                                val primaryChannel = currentChannelsPage.content.first {
-                                    it.id == getSelectData(
-                                        waitMessageDataCallbackQuery()
-                                            .filter { callback ->
-                                                callback.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(
-                                                    callback
-                                                )
-                                            }.first().data
-                                    )
+                                val primaryChannel = with(
+                                    waitMessageDataCallbackQuery()
+                                    .filter { callback ->
+                                        callback.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(
+                                            callback
+                                        )
+                                    }.first().data
+                                ) {
+                                    currentChannelsPage.content.first {
+                                        it.id == getSelectData(this)
+                                    }
                                 }
 
                                 // Select delay
@@ -1013,8 +1047,9 @@ internal class TelegramAssistantFacade(
                                 // Handle media attachment
                                 waitAnyContentMessage().filter {
                                     it.replyTo?.sameMessage(finalFormMessage) ?: false && adminMessageFilter.invoke(it)
-                                }.subscribeSafelyWithoutExceptions(this) { messageContent ->
-                                    val contentToProcess: List<MediaContent> = with(messageContent.content) {
+                                }.subscribeSafelyWithoutExceptions(this) { contentMessage ->
+                                    LOG.debug("Получены медиа файлы для обработанной статьи ${processedArticle.id}, сообщение $contentMessage")
+                                    val contentToProcess: List<MediaContent> = with(contentMessage.content) {
                                         when (this) {
                                             is PhotoContent -> listOf(this)
                                             is VideoContent -> listOf(this)
@@ -1022,14 +1057,20 @@ internal class TelegramAssistantFacade(
                                                 this.group.map { part ->
                                                     part.content
                                                 }.also { content ->
-                                                    require(content.all { part ->
-                                                        part is PhotoContent || part is VideoContent
-                                                    }) { "Поддерживаются только фото/видео медиа файлы." }
+                                                    if (!content.all { part -> part is PhotoContent || part is VideoContent }) {
+                                                        throw AssistantActionException(
+                                                            replyTo = contentMessage,
+                                                            message = "Поддерживаются только фото/видео медиа файлы."
+                                                        )
+                                                    }
                                                 }
                                             }
 
                                             else -> {
-                                                throw IllegalArgumentException("Поддерживаются только фото/видео медиа файлы.")
+                                                throw AssistantActionException(
+                                                    replyTo = contentMessage,
+                                                    message = "Поддерживаются только фото/видео медиа файлы."
+                                                )
                                             }
                                         }
                                     }
@@ -1050,9 +1091,10 @@ internal class TelegramAssistantFacade(
                                 waitMessageDataCallbackQuery().filter {
                                     it.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(it)
                                 }.onEach { delaySelectionCallback ->
+                                    LOG.debug("Получено изменение задержки публикации для обработанной статьи ${processedArticle.id}, сообщение ${delaySelectionCallback.message}")
                                     if (DELAY_DELTA_REGEX.matches(delaySelectionCallback.data)) {
                                         val deltaMinutes = delaySelectionCallback.data.toInt()
-                                        postDelay = postDelay.plus(deltaMinutes.minutes)
+                                        postDelay = max(Duration.ZERO, postDelay.plus(deltaMinutes.minutes))
                                         edit(
                                             message = finalFormMessage,
                                             text = finalPostActionMessage(mediaList.size),
@@ -1065,12 +1107,14 @@ internal class TelegramAssistantFacade(
 
                                 // Delay itself
                                 if (postDelay != Duration.ZERO) {
+                                    LOG.debug("Для обработанной статьи ${processedArticle.id} запущена задержка: $postDelay")
                                     delay(postDelay)
                                 }
 
                                 // Publishing
                                 val forwardChannels = selectedChannels
-                                    .filter { it != primaryChannel }
+                                    .filter { it.id != primaryChannel.id }
+                                LOG.debug("Публикуем обработанную статью ${processedArticle.id}, задержка $postDelay, медиа: ${mediaList.size}, сообщение $handlerMessage в канал ${primaryChannel.name}, затем пересылаем в ${forwardChannels.map { it.name }}")
                                 channelsFacade.postArticle(processedArticle, primaryChannel, forwardChannels)
 
                                 edit(
@@ -1120,7 +1164,7 @@ internal class TelegramAssistantFacade(
                 message = handlerMessage,
                 text = "[УСТАРЕЛО]".boldHTML() +
                         "\n" +
-                        processedArticleMessage(processedArticle).strikethroughHTML()
+                        processedArticleMessage(processedArticle).spoilerHTML()
             )
         }
     }
@@ -1141,11 +1185,11 @@ internal class TelegramAssistantFacade(
         val argsAsMap = args?.let {
             try {
                 parseArgs(command.args, it)
-            } catch (exception: Exception) {
-                throw ReplyableException(
-                    userMessage,
-                    exception.message ?: "Не удалось прочитать аргументы команды",
-                    exception
+            } catch (exception: Throwable) {
+                throw AssistantActionException(
+                    replyTo = userMessage,
+                    message = exception.message ?: "Не удалось прочитать аргументы команды",
+                    cause = exception
                 )
             }
         } ?: emptyMap()
@@ -1181,7 +1225,7 @@ internal class TelegramAssistantFacade(
                 message = initialMessage,
                 text = "[УСТАРЕЛО]".boldHTML() +
                         "\n" +
-                        initialMessage.content.text.strikethroughHTML()
+                        initialMessage.content.text.spoilerHTML()
             )
         }
     }
@@ -1196,11 +1240,11 @@ internal class TelegramAssistantFacade(
     ) {
         val argsAsMap = try {
             parseArgs(command.args, args)
-        } catch (exception: Exception) {
-            throw ReplyableException(
-                userMessage,
-                exception.message ?: "Не удалось прочитать аргументы команды",
-                exception
+        } catch (exception: Throwable) {
+            throw AssistantActionException(
+                replyTo = userMessage,
+                message = exception.message ?: "Не удалось прочитать аргументы команды",
+                cause = exception
             )
         }
 
@@ -1253,7 +1297,7 @@ internal class TelegramAssistantFacade(
                 message = formMessage,
                 text = "[УСТАРЕЛО]".boldHTML() +
                         "\n" +
-                        formMessage.content.text.strikethroughHTML()
+                        formMessage.content.text.spoilerHTML()
             )
         }
     }
@@ -1272,13 +1316,13 @@ internal class TelegramAssistantFacade(
                         message = userMessage,
                         text = successMessage(it)
                     )
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     LOG.error("Не удалось оповестить об успешно выполненном действии ${command.commandName}")
                     throw e
                 }
             }
-        } catch (actionException: Exception) {
-            throw ReplyableException(
+        } catch (actionException: Throwable) {
+            throw AssistantActionException(
                 replyTo = userMessage,
                 message = "Ошибка команды ${command.commandName}. ${errorMessage()}: ${actionException.message}",
                 cause = actionException
@@ -1290,12 +1334,16 @@ internal class TelegramAssistantFacade(
         private val LOG = LogManager.getLogger(TelegramAssistantFacade::class.java)
 
         private const val SPLIT_INPUT = "="
-        private val SPLIT = "===============================================".strikethroughHTML() + "\n"
+        private val SPLIT = "===============================================".spoilerHTML() + "\n"
         private val DEFAULT_PARSE_MODE = HTML
 
         //
         // PARSING/FORMATTING
         //
+
+        private fun String.spoilerHTML(): String {
+            return "<$htmlSpoilerControl>${toHtml()}</$htmlSpoilerClosingControl>"
+        }
 
         private val INPUT_REGEX =
             Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
@@ -1380,14 +1428,16 @@ internal class TelegramAssistantFacade(
         }
 
         private fun processedArticleMessage(processArticle: ProcessedArticle): String {
-            return "Результат обработки режимом ${processArticle.mode.boldHTML()}:" +
+            return "Результат обработки (id = ${processArticle.id}) режимом ${processArticle.mode.boldHTML()}." +
                     "\n" +
                     writeForMessage(
                         mapOf(
-                            "Id результата" to processArticle.id,
-                            "Содержание" to processArticle.content,
+                            "Содержание" to "\n" + processArticle.content,
                         )
-                    )
+                    ) +
+                    "\n" +
+                    "\n" +
+                    "Выберите каналы для публикации:"
         }
 
         private fun articlePostedMessage(
@@ -1582,7 +1632,7 @@ internal class TelegramAssistantFacade(
             return "POST"
         }
 
-        private val DELAY_DELTA_REGEX = Regex("^\\d+")
+        private val DELAY_DELTA_REGEX = Regex("^-?\\d+")
         private fun delayDeltaCallbackData(minutes: Int): String {
             return minutes.toString()
         }

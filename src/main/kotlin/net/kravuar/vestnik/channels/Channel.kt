@@ -1,5 +1,6 @@
 package net.kravuar.vestnik.channels
 
+import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
@@ -22,12 +23,33 @@ class Channel(
     var name: String,
     @Column(nullable = false)
     var platform: ChannelPlatform,
-    @ManyToMany(mappedBy = "channels")
-    var sources: MutableSet<Source> = HashSet(),
     @Column(nullable = false)
     var deleted: Boolean = false,
+    sources: MutableSet<Source> = HashSet(),
 ) {
     override fun toString(): String {
-        return "Channel(id=$id, name='$name', platform=$platform, sources=$sources, deleted=$deleted)"
+        return "Channel(id=$id, name='$name', platform=$platform, sources=${sources.map { it.name }}, deleted=$deleted)"
     }
+
+    @ManyToMany(mappedBy = "channels", cascade = [CascadeType.PERSIST, CascadeType.MERGE])
+    var sources: MutableSet<Source> = sources
+        set(newSources) {
+            // Remove this channel from the old sources that are no longer in the new set
+            sources.forEach { oldSource ->
+                if (!newSources.contains(oldSource)) {
+                    oldSource.channels.remove(this)
+                }
+            }
+
+            // Add this channel to the new sources
+            newSources.forEach { newSource ->
+                if (!sources.contains(newSource)) {
+                    newSource.channels.add(this)
+                }
+            }
+
+            // Update the backing property with the new sources
+            field = newSources
+        }
+
 }

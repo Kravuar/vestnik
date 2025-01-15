@@ -67,5 +67,6 @@ internal interface ChainedAiArticleProcessingNodesRepository :
         pageable: Pageable
     ): Page<ChainedAIArticleProcessingNode>
 
+    fun existsByMode(mode: String): Boolean
     fun deleteAllBySourceAndMode(source: Source?, mode: String): Int
 }

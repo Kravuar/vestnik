@@ -22,7 +22,7 @@ internal open class AIProcessingArticlesFacade(
 ) : ProcessedArticlesFacade {
     @Transactional
     override fun processArticle(article: Article, mode: String): ProcessedArticle {
-        return aiArticleProcessingNodesFacade.getChain(article.source, mode).let { chain ->
+        return aiArticleProcessingNodesFacade.getChainMode(article.source, mode).let { chain ->
             LOG.info("Обработка статьи $article, режим $mode")
             val processedContent = chain
                 .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->

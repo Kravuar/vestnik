@@ -8,6 +8,7 @@ import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
+import java.util.Optional
 import kotlin.concurrent.withLock
 
 internal open class SimpleAIArticleProcessingNodesFacade(
@@ -37,12 +38,31 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             }
     }
 
-    override fun getChain(source: Source?, mode: String): List<ChainedAIArticleProcessingNode> {
-        return generateSequence(
-            chainedAiArticleProcessingNodesRepository
-                .findRoot(source, mode)
-                .orElseThrow { IllegalArgumentException("Цепочка для источника ${source?.name}, режим $mode не найдена") }
-        ) { it.child }.toList()
+    override fun getChainMode(source: Source?, mode: String): List<ChainedAIArticleProcessingNode> {
+        // Search for specified source
+        return getChainOptional(
+            source,
+            mode
+        ).orElseGet {
+            // Or else try to search shared chain
+            getChainOptional(null, mode).orElseThrow {
+                IllegalArgumentException(
+                    "Цепочка для режима $mode" +
+                            (source?.let { ", источника $it" } ?: "") +
+                            " не найдена"
+                )
+            }
+        }
+    }
+
+    private fun getChainOptional(source: Source?, mode: String): Optional<List<ChainedAIArticleProcessingNode>> {
+        return chainedAiArticleProcessingNodesRepository
+            .findRoot(source, mode)
+            .map {
+                generateSequence(it) { node ->
+                    node.child
+                }.toList()
+            }
     }
 
     override fun getModes(source: Source?, page: Int): Page<String> {
@@ -74,6 +94,10 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         val lock = locks.get(Pair(source?.id, mode))
 
         lock.withLock {
+            if (chainedAiArticleProcessingNodesRepository.existsByMode(mode)) {
+                throw IllegalArgumentException("Цепочка для режима $mode уже существует")
+            }
+
             if (chainedAiArticleProcessingNodesRepository.findRoot(source, mode).isPresent) {
                 throw IllegalArgumentException(
                     "Цепочка для режима $mode" + if (source != null) {
