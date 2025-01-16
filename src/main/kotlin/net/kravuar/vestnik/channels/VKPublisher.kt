@@ -7,7 +7,7 @@ internal open class VKPublisher(
     postsFacade: PostsFacade
 ) : AbstractPostPublisher(postsFacade) {
 
-    override fun sendPost(processedArticle: ProcessedArticle, channel: Channel): MessageId {
+    override fun sendPost(processedArticle: ProcessedArticle, channel: Channel, media: List<ChannelsFacade.Media>): MessageId {
         TODO("Not yet implemented")
     }
 

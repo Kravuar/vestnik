@@ -13,6 +13,16 @@ interface ChannelsFacade {
         var sources: Optional<MutableSet<Source>> = Optional.empty(),
     )
 
+    data class Media(
+        val fileId: String,
+        val type: Type
+    ) {
+        enum class Type {
+            PHOTO,
+            VIDEO,
+        }
+    }
+
     /**
      * Find page of non deleted
      */
@@ -26,5 +36,5 @@ interface ChannelsFacade {
 
     fun addChannel(input: ChannelInput): Channel
     fun deleteChannel(name: String): Boolean
-    fun postArticle(processedArticle: ProcessedArticle, primaryChannel: Channel, forwardChannels: Collection<Channel>)
+    fun postArticle(processedArticle: ProcessedArticle, primaryChannel: Channel, forwardChannels: Collection<Channel>, media: List<Media> = emptyList())
 }

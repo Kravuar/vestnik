@@ -3,8 +3,11 @@ package net.kravuar.vestnik.channels
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.FetchType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.ManyToMany
+import jakarta.persistence.Table
 import jakarta.validation.constraints.NotBlank
 import net.kravuar.vestnik.source.Source
 
@@ -14,6 +17,9 @@ enum class ChannelPlatform {
 }
 
 @Entity
+@Table(indexes = [
+    Index(columnList = "id,platform", unique = true)
+])
 class Channel(
     @Id
     @Column(nullable = false)
@@ -28,10 +34,10 @@ class Channel(
     sources: MutableSet<Source> = HashSet(),
 ) {
     override fun toString(): String {
-        return "Channel(id=$id, name='$name', platform=$platform, sources=${sources.map { it.name }}, deleted=$deleted)"
+        return "Channel(id=$id, name='$name', platform=$platform, deleted=$deleted)"
     }
 
-    @ManyToMany(mappedBy = "channels", cascade = [CascadeType.PERSIST, CascadeType.MERGE])
+    @ManyToMany(mappedBy = "channels", fetch = FetchType.EAGER, cascade = [CascadeType.PERSIST, CascadeType.MERGE])
     var sources: MutableSet<Source> = sources
         set(newSources) {
             // Remove this channel from the old sources that are no longer in the new set

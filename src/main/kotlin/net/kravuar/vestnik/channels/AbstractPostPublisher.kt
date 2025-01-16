@@ -10,20 +10,30 @@ import kotlin.concurrent.withLock
 
 internal abstract class AbstractPostPublisher(
     private val postsFacade: PostsFacade
-): PostPublisher {
+) : PostPublisher {
     private val locks = Striped.lazyWeakLock(5)
 
-    protected abstract fun sendPost(processedArticle: ProcessedArticle, channel: Channel): MessageId
-    protected abstract fun sendForward(originalChannel: Channel, messageId: MessageId, targetChannel: Channel): MessageId
+    protected abstract fun sendPost(
+        processedArticle: ProcessedArticle,
+        channel: Channel,
+        media: List<ChannelsFacade.Media>
+    ): MessageId
+
+    protected abstract fun sendForward(
+        originalChannel: Channel,
+        messageId: MessageId,
+        targetChannel: Channel
+    ): MessageId
 
     protected data class PublisherResult(
         val messageId: MessageId,
         val isForwarded: Boolean
     )
+
     protected open fun createPost(
         processedArticle: ProcessedArticle,
         targetChannel: Channel,
-        action: () -> PublisherResult
+        action: () -> PublisherResult,
     ): Post {
         val processedArticleId = requireNotNull(processedArticle.id) {
             "ID выкладываемой новости не может отсутствовать"
@@ -31,10 +41,12 @@ internal abstract class AbstractPostPublisher(
         val lock = locks.get(processedArticleId)
 
         lock.withLock {
-            require(!postsFacade.existsPostOfProcessedArticleAndChannel(
-                processedArticleId,
-                targetChannel.id
-            )) {
+            require(
+                !postsFacade.existsPostOfProcessedArticleAndChannel(
+                    processedArticleId,
+                    targetChannel.id
+                )
+            ) {
                 "Пост для статьи с id=$processedArticleId уже существует в канале ${targetChannel.name}"
             }
 
@@ -45,20 +57,22 @@ internal abstract class AbstractPostPublisher(
                     Optional.of(targetChannel),
                     Optional.of(publisherResult.messageId),
                     Optional.of(publisherResult.isForwarded)
-                ))
+                )
+            )
         }
     }
 
     @Transactional
-    override fun publish(processedArticle: ProcessedArticle, channel: Channel): Post {
+    override fun publish(processedArticle: ProcessedArticle, channel: Channel, media: List<ChannelsFacade.Media>): Post {
         return createPost(
             processedArticle,
             channel,
         ) {
-            val messageId = sendPost(processedArticle, channel)
+            val messageId = sendPost(processedArticle, channel, media)
             PublisherResult(messageId, false)
         }
     }
+
     @Transactional
     override fun forward(originalChannel: Channel, messageId: MessageId, targetChannel: Channel): Post {
         val originalPost = postsFacade.getPost(messageId)

@@ -79,7 +79,8 @@ internal open class SimpleChannelsFacade(
     override fun postArticle(
         processedArticle: ProcessedArticle,
         primaryChannel: Channel,
-        forwardChannels: Collection<Channel>
+        forwardChannels: Collection<Channel>,
+        media: List<ChannelsFacade.Media>
     ) {
         LOG.info(
             "Публикация статьи: $processedArticle, в канал ${primaryChannel.name}" + if (forwardChannels.isNotEmpty()) {
@@ -119,7 +120,7 @@ internal open class SimpleChannelsFacade(
 
             val primaryPublisher = publishers[primaryChannel.platform]
                 ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
-            val primaryPost = primaryPublisher.publish(processedArticle, primaryChannel)
+            val primaryPost = primaryPublisher.publish(processedArticle, primaryChannel, media = media)
             LOG.info("Публикация статьи: $processedArticle в основной канал ${primaryChannel.name} выполнена")
 
             forwardChannels.forEach {
