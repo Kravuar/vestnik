@@ -23,7 +23,7 @@ internal open class AIProcessingArticlesFacade(
     @Transactional
     override fun processArticle(article: Article, mode: String): ProcessedArticle {
         return aiArticleProcessingNodesFacade.getChainMode(article.source, mode).let { chain ->
-            LOG.info("Обработка статьи $article, режим $mode")
+            LOG.info("Обработка режимом $mode статьи $article")
             val processedContent = chain
                 .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->
                     chatModel.call(
@@ -40,7 +40,7 @@ internal open class AIProcessingArticlesFacade(
                     ).result.output.content
                 }
             processedArticleRepository.save(ProcessedArticle(article, processedContent, mode)).also {
-                LOG.info("Обработка статьи $article завершена")
+                LOG.info("Завершена обработка режимом $mode статьи $article")
             }
         }
     }
