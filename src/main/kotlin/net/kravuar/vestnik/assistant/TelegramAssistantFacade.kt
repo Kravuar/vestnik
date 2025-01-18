@@ -28,7 +28,6 @@ import dev.inmo.tgbotapi.extensions.utils.types.buttons.inlineKeyboard
 import dev.inmo.tgbotapi.extensions.utils.updates.retrieving.longPolling
 import dev.inmo.tgbotapi.extensions.utils.withContent
 import dev.inmo.tgbotapi.extensions.utils.withUserOrThrow
-import dev.inmo.tgbotapi.requests.edit.reply_markup.editMessageReplyMarkupMethod
 import dev.inmo.tgbotapi.types.BotCommand
 import dev.inmo.tgbotapi.types.ChatId
 import dev.inmo.tgbotapi.types.RawChatId
@@ -47,6 +46,7 @@ import dev.inmo.tgbotapi.types.message.content.TextContent
 import dev.inmo.tgbotapi.types.message.content.TextMessage
 import dev.inmo.tgbotapi.types.message.content.VideoContent
 import dev.inmo.tgbotapi.types.queries.callback.MessageCallbackQuery
+import dev.inmo.tgbotapi.types.queries.callback.MessageDataCallbackQuery
 import dev.inmo.tgbotapi.utils.PreviewFeature
 import dev.inmo.tgbotapi.utils.extensions.toHtml
 import dev.inmo.tgbotapi.utils.internal.htmlSpoilerClosingControl
@@ -62,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -177,6 +178,22 @@ internal class TelegramAssistantFacade(
         }
     }
 
+    override fun notifyNewArticle(article: Article) {
+        LOG.info("Оповещение о новой статье $article")
+
+        runBlocking {
+            bot.send(
+                chatId = adminChannel,
+                text = newArticleMessage(article),
+                markup = articleReplyMarkup(
+                    requireNotNull(article.id) {
+                        "ID обрабатываемой статьи не может отсутствовать."
+                    }
+                ),
+            )
+        }
+    }
+
     internal suspend fun start(): Job {
         val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
             LOG.error("Ошибка во время работы ассистента", it)
@@ -213,6 +230,10 @@ internal class TelegramAssistantFacade(
                     } catch (exception: Throwable) {
                         LOG.error("Не удалось оповестить об ошибке $it, по причине: $exception")
                     }
+                }
+
+                is CancellationException -> {
+                    LOG.fatal("Ошибка coroutine и процессов обработки")
                 }
 
                 else -> {
@@ -293,7 +314,7 @@ internal class TelegramAssistantFacade(
                         with(createSubContext()) {
                             launch {
                                 val processedArticle = processedArticlesFacade.processArticle(article, mode)
-                                this@with.processedArticleHandling(articleMessage, processedArticle)
+                                this@with.handleProcessedArticleInteraction(articleMessage, processedArticle)
                             }.also {
                                 LOG.debug("Запущен процесс обработки статьи $id, сообщение ${articleMessage.messageId}")
                             }.invokeOnCompletion {
@@ -459,7 +480,7 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "currentName" to "Имя обновляемого источника (обязательно)",
+                                    "name" to "Имя обновляемого источника (обязательно)",
                                     "newName" to "Имя",
                                     "url" to "URL",
                                     "schedule" to "Периодичность (в минутах)",
@@ -470,7 +491,7 @@ internal class TelegramAssistantFacade(
                             ),
                     { input ->
                         sourcesFacade.updateSource(
-                            requireNotNull(input["currentName"]) { "Не указано имя обновляемого источника" },
+                            requireNotNull(input["name"]) { "Не указано имя обновляемого источника" },
                             SourcesFacade.SourceInput().apply {
                                 input["newName"]?.let {
                                     name = Optional.of(it)
@@ -932,23 +953,170 @@ internal class TelegramAssistantFacade(
         }
     }
 
-    override fun notifyNewArticle(article: Article) {
-        LOG.info("Оповещение о новой статье $article")
+    private suspend fun <BS : BehaviourContext> BS.handleProcessedArticlePublishing(
+        processedArticleMessage: ContentMessage<TextContent>,
+        selectedChannels: List<Channel>,
+        processedArticle: ProcessedArticle,
+    ) {
+        // Multistep final form
+        val finalFormMessage: AccessibleMessage
 
-        runBlocking {
-            bot.send(
-                chatId = adminChannel,
-                text = newArticleMessage(article),
-                markup = articleReplyMarkup(
-                    requireNotNull(article.id) {
-                        "ID обрабатываемой статьи не может отсутствовать."
-                    }
-                ),
+        // Select primary channel
+        finalFormMessage = reply(
+            message = processedArticleMessage,
+            text = primaryChannelSelectionMessage(),
+            markup = primaryChannelSelectionMarkup(selectedChannels)
+        )
+
+        withNotifyingTimeout(config.articleLifeTime.toKotlinDuration(), finalFormMessage) {
+            // Primary channel selection handling
+            val primaryChannel = with(
+                waitMessageDataCallbackQuery()
+                    .filter { callback ->
+                        callback.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(
+                            callback
+                        )
+                    }.first().data
+            ) {
+                selectedChannels.first {
+                    it.id == getSelectData(this)
+                }
+            }
+
+            // Select delay
+            var postDelay = Duration.ZERO
+            var mediaAttachments = listOf<ChannelsFacade.Media>()
+            edit(
+                message = finalFormMessage,
+                text = finalPostFormMessage(0),
+                markup = finalPostFormMarkup(postDelay, false)
             )
+
+            merge(
+                waitMessageDataCallbackQuery().filter {
+                    it.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(it)
+                },
+                waitAnyContentMessage().filter {
+                    it.replyTo?.sameMessage(finalFormMessage) ?: false && adminMessageFilter.invoke(it)
+                }
+            ).onEach { update ->
+                when (update) {
+                    is MessageDataCallbackQuery -> {
+                        when {
+                            // Handle delay adjustment
+                            DELAY_DELTA_REGEX.matches(update.data) -> {
+                                LOG.debug("Получено изменение задержки публикации для обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                                val deltaMinutes = update.data.toInt()
+                                val newDelay = max(Duration.ZERO, postDelay.plus(deltaMinutes.minutes))
+                                if (postDelay != newDelay) {
+                                    postDelay = newDelay
+                                    edit(
+                                        message = finalFormMessage,
+                                        text = finalPostFormMessage(mediaAttachments.size),
+                                        markup = finalPostFormMarkup(postDelay, mediaAttachments.isNotEmpty())
+                                    )
+                                }
+                            }
+
+                            // Attached medias clear
+                            update.data == clearMediaCallbackData() -> {
+                                LOG.debug("Получен запрос на очистку прикреплённых медиа ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+
+                                mediaAttachments = emptyList()
+
+                                // Update message
+                                edit(
+                                    message = finalFormMessage,
+                                    text = finalPostFormMessage(0)
+                                )
+                            }
+                        }
+                    }
+
+                    is CommonMessage<*> -> {
+                        LOG.debug("Получены медиа файлы, сообщение ${update.messageId}, обработанная статья ${processedArticle.id}")
+                        val contentToProcess: List<MediaContent> = update.content.let {
+                            when (it) {
+                                is PhotoContent -> listOf(it)
+                                is VideoContent -> listOf(it)
+                                is MediaGroupContent<*> -> {
+                                    it.group.map { part ->
+                                        part.content
+                                    }.also { content ->
+                                        if (!content.all { part -> part is PhotoContent || part is VideoContent }) {
+                                            throw AssistantActionException(
+                                                replyTo = update,
+                                                message = "Поддерживаются только фото/видео медиа файлы."
+                                            )
+                                        }
+                                    }
+                                }
+
+                                else -> {
+                                    throw AssistantActionException(
+                                        replyTo = update,
+                                        message = "Поддерживаются только фото/видео медиа файлы."
+                                    )
+                                }
+                            }
+                        }
+                        // Update attached medias
+                        mediaAttachments = contentToProcess.map { media ->
+                            ChannelsFacade.Media(
+                                media.media.fileId.fileId,
+                                media.let {
+                                    if (it is PhotoContent) {
+                                        ChannelsFacade.Media.Type.PHOTO
+                                    } else {
+                                        ChannelsFacade.Media.Type.VIDEO
+                                    }
+                                }
+                            )
+                        }
+
+                        // Update message
+                        edit(
+                            message = finalFormMessage,
+                            text = finalPostFormMessage(mediaAttachments.size)
+                        )
+                    }
+                }
+            }.catch {
+                defaultSafelyWithoutExceptionHandlerWithNull.invoke(it)
+            }.filter { update ->
+                // When finally publishing
+                update is MessageDataCallbackQuery && update.data == postCallbackData()
+            }.first()
+
+            // Perform publishing
+            with(createSubContext()) {
+                // Delay itself
+                if (postDelay != Duration.ZERO) {
+                    LOG.debug("Для обработанной статьи ${processedArticle.id}, сообщение ${processedArticleMessage.messageId} запущена задержка: $postDelay")
+                    delay(postDelay)
+                }
+
+                // Publishing
+                val forwardChannels = selectedChannels
+                    .filter { it.name != primaryChannel.name }
+                LOG.debug("Публикуем обработанную статью ${processedArticle.id}, сообщение ${processedArticleMessage.messageId}, задержка $postDelay, медиа: ${mediaAttachments.size}, сообщение $processedArticleMessage в канал ${primaryChannel.name}, затем пересылаем в ${forwardChannels.map { it.name }}")
+                channelsFacade.postArticle(
+                    processedArticle,
+                    primaryChannel,
+                    forwardChannels,
+                    mediaAttachments
+                )
+
+                this@with.edit(
+                    message = finalFormMessage,
+                    text = articlePostedMessage(processedArticle, primaryChannel, forwardChannels),
+                    markup = inlineKeyboard { }
+                )
+            }
         }
     }
 
-    private suspend fun <BS : BehaviourContext> BS.processedArticleHandling(
+    private suspend fun <BS : BehaviourContext> BS.handleProcessedArticleInteraction(
         processedArticleMessage: ContentMessage<TextContent>,
         processedArticle: ProcessedArticle
     ) {
@@ -1018,146 +1186,15 @@ internal class TelegramAssistantFacade(
                                 val selectedChannels = processedArticle.article.source.channels.filter {
                                     it.id in selected
                                 }
-
-                                // Multistep final form
-                                val finalFormMessage: AccessibleMessage
-
-                                // Select primary channel
-                                finalFormMessage = reply(
-                                    message = processedArticleMessage,
-                                    text = primaryChannelSelectionMessage(),
-                                    markup = primaryChannelSelectionMarkup(selectedChannels)
+                                this@with.handleProcessedArticlePublishing(
+                                    processedArticleMessage,
+                                    selectedChannels,
+                                    processedArticle
                                 )
-
-                                withNotifyingTimeout(config.articleLifeTime.toKotlinDuration(), finalFormMessage) {
-                                    // Primary channel selection handling
-                                    val primaryChannel = with(
-                                        waitMessageDataCallbackQuery()
-                                            .filter { callback ->
-                                                callback.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(
-                                                    callback
-                                                )
-                                            }.first().data
-                                    ) {
-                                        currentChannelsPage.content.first {
-                                            it.id == getSelectData(this)
-                                        }
-                                    }
-
-                                    // Select delay
-                                    var postDelay = Duration.ZERO
-                                    var mediaAttachments = listOf<ChannelsFacade.Media>()
-                                    edit(
-                                        message = finalFormMessage,
-                                        text = finalPostActionMessage(0),
-                                        markup = finalPostActionMarkup(postDelay)
-                                    )
-
-                                    // Handle media attachment
-                                    waitAnyContentMessage().filter {
-                                        it.replyTo?.sameMessage(finalFormMessage) ?: false && adminMessageFilter.invoke(
-                                            it
-                                        )
-                                    }.subscribeSafelyWithoutExceptions(this) { contentMessage ->
-                                        LOG.debug("Получены медиа файлы для обработанной статьи ${processedArticle.id}, сообщение ${contentMessage.messageId}")
-                                        val contentToProcess: List<MediaContent> = with(contentMessage.content) {
-                                            when (this) {
-                                                is PhotoContent -> listOf(this)
-                                                is VideoContent -> listOf(this)
-                                                is MediaGroupContent<*> -> {
-                                                    this.group.map { part ->
-                                                        part.content
-                                                    }.also { content ->
-                                                        if (!content.all { part -> part is PhotoContent || part is VideoContent }) {
-                                                            throw AssistantActionException(
-                                                                replyTo = contentMessage,
-                                                                message = "Поддерживаются только фото/видео медиа файлы."
-                                                            )
-                                                        }
-                                                    }
-                                                }
-
-                                                else -> {
-                                                    throw AssistantActionException(
-                                                        replyTo = contentMessage,
-                                                        message = "Поддерживаются только фото/видео медиа файлы."
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        // Update attached medias
-                                        mediaAttachments = contentToProcess.map { media ->
-                                            ChannelsFacade.Media(
-                                                media.media.fileId.fileId,
-                                                media.let {
-                                                    if (it is PhotoContent) {
-                                                        ChannelsFacade.Media.Type.PHOTO
-                                                    } else {
-                                                        ChannelsFacade.Media.Type.VIDEO
-                                                    }
-                                                }
-                                            )
-                                        }
-
-                                        // Update message
-                                        edit(
-                                            message = finalFormMessage,
-                                            text = finalPostActionMessage(mediaAttachments.size)
-                                        )
-                                    }
-
-                                    // Handle delay adjustment/final post action
-                                    waitMessageDataCallbackQuery().filter {
-                                        it.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(it)
-                                    }.onEach { delaySelectionCallback ->
-                                        LOG.debug("Получено изменение задержки публикации для обработанной статьи ${processedArticle.id}, сообщение ${delaySelectionCallback.message.messageId}")
-                                        if (DELAY_DELTA_REGEX.matches(delaySelectionCallback.data)) {
-                                            val deltaMinutes = delaySelectionCallback.data.toInt()
-                                            val newDelay = max(Duration.ZERO, postDelay.plus(deltaMinutes.minutes))
-                                            if (postDelay != newDelay) {
-                                                postDelay = newDelay
-                                                edit(
-                                                    message = finalFormMessage,
-                                                    text = finalPostActionMessage(mediaAttachments.size),
-                                                    markup = finalPostActionMarkup(postDelay)
-                                                )
-                                            }
-                                        }
-                                    }.catch {
-                                        defaultSafelyWithoutExceptionHandlerWithNull.invoke(it)
-                                    }.filter { delaySelectionCallback ->
-                                        delaySelectionCallback.data == postCallbackData()
-                                    }.first()
-
-                                    with(createSubContext()) {
-                                        // Delay itself
-                                        if (postDelay != Duration.ZERO) {
-                                            LOG.debug("Для обработанной статьи ${processedArticle.id}, сообщение ${processedArticleMessage.messageId} запущена задержка: $postDelay")
-                                            delay(postDelay)
-                                        }
-
-                                        // Publishing
-                                        val forwardChannels = selectedChannels
-                                            .filter { it.name != primaryChannel.name }
-                                        LOG.debug("Публикуем обработанную статью ${processedArticle.id}, сообщение ${processedArticleMessage.messageId}, задержка $postDelay, медиа: ${mediaAttachments.size}, сообщение $processedArticleMessage в канал ${primaryChannel.name}, затем пересылаем в ${forwardChannels.map { it.name }}")
-                                        channelsFacade.postArticle(
-                                            processedArticle,
-                                            primaryChannel,
-                                            forwardChannels,
-                                            mediaAttachments
-                                        )
-
-                                        edit(
-                                            message = finalFormMessage,
-                                            text = articlePostedMessage(processedArticle, primaryChannel, forwardChannels),
-                                            markup = inlineKeyboard { }
-                                        )
-                                    }
-                                }
                             }.also {
-                                LOG.debug("Запущен процесс публикации обработанной статьи $processedArticle, сообщение ${processedArticleMessage.messageId}")
+                                LOG.debug("Запущен процесс публикации, сообщение ${processedArticleMessage.messageId}, обработанная статья $processedArticle")
                             }.invokeOnCompletion {
-                                LOG.debug("Завершён процесс публикации обработанной статьи $processedArticle, сообщение ${processedArticleMessage.messageId}")
+                                LOG.debug("Завершён процесс публикации, сообщение ${processedArticleMessage.messageId}, обработанная статья $processedArticle")
                             }
                         }
                     }
@@ -1186,7 +1223,7 @@ internal class TelegramAssistantFacade(
                             message = textMessage,
                             text = "Исправляю..."
                         )
-                        this@with.processedArticleHandling(
+                        this@with.handleProcessedArticleInteraction(
                             reprocessMessage,
                             processedArticlesFacade.reprocessArticle(processedArticle.id!!, textMessage.content.text)
                         )
@@ -1480,7 +1517,9 @@ internal class TelegramAssistantFacade(
                     processArticle.content +
                     "\n" +
                     "\n" +
-                    "Выберите каналы для публикации:"
+                    "Для корректировки введите замечания." +
+                    "\n" +
+                    "Для публикации выберите каналы:"
         }
 
         private fun articlePostedMessage(
@@ -1503,8 +1542,8 @@ internal class TelegramAssistantFacade(
             return "Выберите первичный канал"
         }
 
-        private fun finalPostActionMessage(mediasCount: Int): String {
-            return "Выберите когда опубликовать новость, прикрепите необходимые медиа файлы (${mediasCount} файлов прикреплено)"
+        private fun finalPostFormMessage(mediasCount: Int): String {
+            return "Выберите когда опубликовать новость, при необходимости прикрепите медиа файлы (прикреплено ${mediasCount})"
         }
 
         //
@@ -1552,7 +1591,7 @@ internal class TelegramAssistantFacade(
             }
         }
 
-        private fun finalPostActionMarkup(currentDelay: Duration): InlineKeyboardMarkup {
+        private fun finalPostFormMarkup(currentDelay: Duration, hasMedia: Boolean): InlineKeyboardMarkup {
             return inlineKeyboard {
                 row {
                     dataButton("-10м", delayDeltaCallbackData(-10))
@@ -1566,6 +1605,9 @@ internal class TelegramAssistantFacade(
                         else -> "Опубликовать через ${currentDelay.minutes}м"
                     }
                     dataButton(message, postCallbackData())
+                    if (hasMedia) {
+                        dataButton("Убрать медиа", clearMediaCallbackData())
+                    }
                 }
             }
         }
@@ -1677,6 +1719,10 @@ internal class TelegramAssistantFacade(
 
         private fun postCallbackData(): String {
             return "POST"
+        }
+
+        private fun clearMediaCallbackData(): String {
+            return "CLEAR"
         }
 
         private val DELAY_DELTA_REGEX = Regex("^-?\\d+")
