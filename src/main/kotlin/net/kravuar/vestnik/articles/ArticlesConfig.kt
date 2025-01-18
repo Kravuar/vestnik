@@ -11,7 +11,7 @@ import org.springframework.scheduling.TaskScheduler
 @Configuration
 internal class ArticlesConfig {
 
-    @Bean(destroyMethod = "stopPollingAll", initMethod = "startPollingAll")
+    @Bean(destroyMethod = "stopPollingAll")
     fun articleScheduler(
         scheduler: TaskScheduler,
         articlesFacade: ArticlesFacade,

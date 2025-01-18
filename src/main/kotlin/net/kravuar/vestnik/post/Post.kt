@@ -2,6 +2,7 @@ package net.kravuar.vestnik.post
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
@@ -19,7 +20,7 @@ import java.time.OffsetDateTime
 class Post(
     @ManyToOne(optional = false)
     var processedArticle: ProcessedArticle,
-    @ManyToOne(optional = false)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
     var channel: Channel,
     @Column(nullable = false)
     var channelPostId: Long,

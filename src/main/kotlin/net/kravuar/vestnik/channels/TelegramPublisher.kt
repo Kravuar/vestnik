@@ -2,6 +2,8 @@ package net.kravuar.vestnik.channels
 
 import dev.inmo.tgbotapi.bot.TelegramBot
 import dev.inmo.tgbotapi.extensions.api.forward
+import dev.inmo.tgbotapi.extensions.api.send.media.sendPhoto
+import dev.inmo.tgbotapi.extensions.api.send.media.sendVideo
 import dev.inmo.tgbotapi.extensions.api.send.media.sendVisualMediaGroup
 import dev.inmo.tgbotapi.extensions.api.send.send
 import dev.inmo.tgbotapi.requests.abstracts.InputFile
@@ -18,39 +20,69 @@ internal open class TelegramPublisher(
     postsFacade: PostsFacade,
     private val telegramBot: TelegramBot
 ) : AbstractPostPublisher(postsFacade) {
-    override fun sendPost(processedArticle: ProcessedArticle, channel: Channel, media: List<ChannelsFacade.Media>): MessageId {
+    override fun sendPost(processedArticle: ProcessedArticle, channel: Channel, mediaList: List<ChannelsFacade.Media>): MessageId {
+        val telegramMedia = mediaList.mapIndexed { idx, media ->
+            // Only if group and is the first media
+            val caption = if (idx == 0 && mediaList.size > 1) {
+                processedArticle.content
+            } else {
+                null
+            }
+            when (media.type) {
+                ChannelsFacade.Media.Type.PHOTO -> {
+                    TelegramMediaPhoto(
+                        file = InputFile.fromId(media.fileId),
+                        text = caption,
+                        parseMode = HTML
+                    )
+                }
+                ChannelsFacade.Media.Type.VIDEO -> {
+                    TelegramMediaVideo(
+                        file = InputFile.fromId(media.fileId),
+                        text = caption,
+                        parseMode = HTML
+                    )
+                }
+            }
+        }
+
         return runBlocking {
-            if (media.isNotEmpty()) {
-                telegramBot.sendVisualMediaGroup(
-                    chatId = ChatId(RawChatId(channel.id)),
-                    media = media.mapIndexed { idx, media ->
-                        val caption = if (idx == 0) {
-                            processedArticle.content
-                        } else { null }
-                        when (media.type) {
+            when (telegramMedia.size) {
+                0 -> {
+                    telegramBot.send(
+                        chatId = ChatId(RawChatId(channel.id)),
+                        text = processedArticle.content,
+                        parseMode = HTML
+                    )
+                }
+                1 -> {
+                    with (telegramMedia[0]) {
+                        when (mediaList[0].type) {
                             ChannelsFacade.Media.Type.PHOTO -> {
-                                TelegramMediaPhoto(
-                                    file = InputFile.fromId(media.fileId),
-                                    text = caption,
-                                    parseMode = HTML
+                                telegramBot.sendPhoto(
+                                    chatId = ChatId(RawChatId(channel.id)),
+                                    text = processedArticle.content,
+                                    parseMode = HTML,
+                                    fileId = file
                                 )
                             }
                             ChannelsFacade.Media.Type.VIDEO -> {
-                                TelegramMediaVideo(
-                                    file = InputFile.fromId(media.fileId),
-                                    text = caption,
-                                    parseMode = HTML
+                                telegramBot.sendVideo(
+                                    chatId = ChatId(RawChatId(channel.id)),
+                                    text = processedArticle.content,
+                                    parseMode = HTML,
+                                    video = file
                                 )
                             }
                         }
                     }
-                )
-            } else {
-                telegramBot.send(
-                    chatId = ChatId(RawChatId(channel.id)),
-                    text = processedArticle.content,
-                    parseMode = HTML
-                )
+                }
+                else -> {
+                    telegramBot.sendVisualMediaGroup(
+                        chatId = ChatId(RawChatId(channel.id)),
+                        media = telegramMedia
+                    )
+                }
             }
         }.messageId.long
     }

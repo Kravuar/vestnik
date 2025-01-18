@@ -81,7 +81,7 @@ internal open class SimpleChannelsFacade(
         primaryChannel: Channel,
         forwardChannels: Collection<Channel>,
         media: List<ChannelsFacade.Media>
-    ) {
+    ): ChannelsFacade.PublishingResult {
         LOG.info(
             "Публикация статьи: $processedArticle, в канал ${primaryChannel.name}" + if (forwardChannels.isNotEmpty()) {
                 " с forward в: ${forwardChannels.joinToString { it.name }}"
@@ -123,13 +123,18 @@ internal open class SimpleChannelsFacade(
             val primaryPost = primaryPublisher.publish(processedArticle, primaryChannel, media = media)
             LOG.info("Публикация статьи: $processedArticle в основной канал ${primaryChannel.name} выполнена")
 
-            forwardChannels.forEach {
+            val forwardedPosts = forwardChannels.map {
                 val forwardPublisher = publishers[it.platform]
                     ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
                 forwardPublisher.forward(primaryChannel, primaryPost.id!!, it).also { post ->
                     LOG.info("Forward статьи: $processedArticle в канал ${post.channel.name} выполнена")
                 }
             }
+
+            return ChannelsFacade.PublishingResult(
+                primaryPost,
+                forwardedPosts,
+            )
         }
     }
 

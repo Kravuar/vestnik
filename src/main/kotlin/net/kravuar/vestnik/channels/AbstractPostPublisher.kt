@@ -16,7 +16,7 @@ internal abstract class AbstractPostPublisher(
     protected abstract fun sendPost(
         processedArticle: ProcessedArticle,
         channel: Channel,
-        media: List<ChannelsFacade.Media>
+        mediaList: List<ChannelsFacade.Media>
     ): MessageId
 
     protected abstract fun sendForward(

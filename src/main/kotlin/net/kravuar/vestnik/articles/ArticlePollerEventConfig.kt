@@ -3,12 +3,18 @@ package net.kravuar.vestnik.articles
 import net.kravuar.vestnik.commons.EntityEvent
 import net.kravuar.vestnik.source.Source
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.event.ContextRefreshedEvent
 import org.springframework.context.event.EventListener
 
 @Configuration
 internal class ArticlePollerEventConfig(
     private val articleScheduler: ArticleScheduler
 ) {
+
+    @EventListener
+    fun startPollingAll(event: ContextRefreshedEvent) {
+        articleScheduler.startPollingAll()
+    }
 
     @EventListener(condition = "#event.state == T(net.kravuar.vestnik.commons.EntityState).CREATED && #event.entity.suspended != true")
     fun startPolling(event: EntityEvent<Source>) {

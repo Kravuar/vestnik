@@ -32,7 +32,7 @@ internal open class SimplePostsFacade(
             ).apply {
                 postInput.isForwarded.ifPresent { this.isForwarded = it }
             }).also {
-                LOG.info("Пост сохранён: ${it.id} | $postInput")
+                LOG.info("Пост ${it.id} сохранён: ${it.processedArticle}")
         }
     }
 
