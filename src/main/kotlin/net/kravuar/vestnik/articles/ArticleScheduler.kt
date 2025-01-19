@@ -5,8 +5,6 @@ import net.kravuar.vestnik.source.SourcesFacade
 import org.apache.logging.log4j.LogManager
 import org.springframework.scheduling.TaskScheduler
 import java.util.concurrent.ScheduledFuture
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.toJavaDuration
 
 internal class ArticleScheduler(
     private val scheduler: TaskScheduler,
@@ -16,6 +14,7 @@ internal class ArticleScheduler(
     private val tasksBySource = mutableMapOf<String, ScheduledFuture<*>>()
 
     fun startPollingAll() {
+        stopPollingAll()
         sourcesFacade.getSources().forEach(this::startPolling)
     }
 

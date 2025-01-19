@@ -12,7 +12,6 @@ import jakarta.validation.constraints.NotBlank
 import net.kravuar.vestnik.source.Source
 
 enum class ChannelPlatform {
-    VK,
     TG
 }
 

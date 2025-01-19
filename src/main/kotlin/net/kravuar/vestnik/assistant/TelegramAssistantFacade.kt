@@ -2,6 +2,7 @@ package net.kravuar.vestnik.assistant
 
 import dev.inmo.micro_utils.common.alsoIfFalse
 import dev.inmo.micro_utils.coroutines.defaultSafelyWithoutExceptionHandlerWithNull
+import dev.inmo.micro_utils.coroutines.joinFirst
 import dev.inmo.micro_utils.coroutines.launchSafelyWithoutExceptions
 import dev.inmo.micro_utils.coroutines.subscribeSafelyWithoutExceptions
 import dev.inmo.tgbotapi.bot.TelegramBot
@@ -86,10 +87,14 @@ import net.kravuar.vestnik.processor.ProcessedArticlesFacade
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.source.SourcesFacade
 import org.apache.logging.log4j.LogManager
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Optional
 import java.util.concurrent.CancellationException
 import java.util.function.Predicate
 import kotlin.time.Duration
+import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 
 private data class MessageWithReplyMarkup(
@@ -271,7 +276,7 @@ internal class TelegramAssistantFacade(
                 }
 
                 is CancellationException -> {
-                    LOG.fatal("Внутренняя ошибка coroutine и процессов обработки")
+                    LOG.error("Внутренняя ошибка coroutine и процессов обработки")
                 }
 
                 else -> {
@@ -976,7 +981,20 @@ internal class TelegramAssistantFacade(
         var forwardChannels: List<Channel>,
         var delay: Duration = Duration.ZERO,
         var mediaList: MutableList<ChannelsFacade.Media> = mutableListOf()
-    )
+    ) {
+        fun writeForMessage(): String {
+            return writeForMessage(
+                mutableMapOf(
+                    "Первичный канал" to primaryChannel.chatLink(),
+                    "Медиа файлы" to mediaList.size
+                ).apply {
+                    if (forwardChannels.isNotEmpty()) {
+                        put("Forward каналы", forwardChannels.joinToString { it.chatLink() })
+                    }
+                }
+            )
+        }
+    }
 
     private suspend fun <BS : BehaviourContext> BS.handleProcessedArticlePublishing(
         processedArticleMessage: ContentMessage<TextContent>,
@@ -1012,7 +1030,7 @@ internal class TelegramAssistantFacade(
                 )
             }
 
-            // Select delay
+            // Select delay, add media
             edit(
                 message = finalFormMessage,
                 text = finalPostFormMessage(publicationInfo),
@@ -1028,7 +1046,7 @@ internal class TelegramAssistantFacade(
                 waitMediaContentMessage().filter {
                     it.replyTo?.sameMessage(finalFormMessage) ?: false && adminMessageFilter.invoke(it)
                 }.onEach {
-                    LOG.debug("Получены медиа файлы ${it.content.javaClass}, сообщение ${it.messageId}, обработанная статья ${processedArticle.id}")
+                    LOG.debug("Получены медиа файлы ${it.content.javaClass}, сообщение ${finalFormMessage.messageId}, обработанная статья ${processedArticle.id}")
                 }.flatMap { message ->
                     message.content.let { content ->
                         when (content) {
@@ -1103,30 +1121,77 @@ internal class TelegramAssistantFacade(
                 // When finally publishing
                 update is MessageDataCallbackQuery && update.data == postCallbackData()
             }.run {
-                // Delay itself
-                if (publicationInfo.delay != Duration.ZERO) {
-                    LOG.debug("Для обработанной статьи ${processedArticle.id}, сообщение ${processedArticleMessage.messageId} запущена задержка: ${publicationInfo.delay}")
-                    delay(publicationInfo.delay)
+                with(createSubContext()) {
+                    launchSafelyWithoutExceptions {
+                        // Delaying the publication
+                        val delayJob = launchSafelyWithoutExceptionsSuppressCancellation {
+                            if (publicationInfo.delay != Duration.ZERO) {
+                                edit(
+                                    message = finalFormMessage,
+                                    text = articleScheduledMessage(
+                                        processedArticle,
+                                        publicationInfo
+                                    ),
+                                    markup = articleScheduledMarkup()
+                                )
+                                delay(publicationInfo.delay)
+                            }
+                        }.also {
+                            LOG.debug("Запущен процесс задержки ${publicationInfo.delay} для публикации обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                            it.invokeOnCompletion {
+                                LOG.debug("Завершён процесс задержки ${publicationInfo.delay} для публикации обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                            }
+                        }
+                        // If delayed, need to be able to cancel
+                        val cancelJob = if (publicationInfo.delay != Duration.ZERO) {
+                            launchSafelyWithoutExceptionsSuppressCancellation {
+                                waitMessageDataCallbackQuery()
+                                    .filter {
+                                        it.message.sameMessage(finalFormMessage) && adminCallbackFilter.invoke(it)
+                                    }.filter {
+                                        it.data == cancelCallbackData()
+                                    }.first()
+                            }.also {
+                                LOG.debug("Запущен процесс ожидания отмены отложенной публикации для обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                                it.invokeOnCompletion {
+                                    LOG.debug("Завершён процесс ожидания отмены отложенной публикации для обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                                }
+                            }
+                        } else {
+                            null
+                        }
+                        listOfNotNull(delayJob, cancelJob)
+                            .joinFirst(this, cancelOthers = true)
+                            .run {
+                                if (this == delayJob) {
+                                    // Publishing
+                                    LOG.info("Публикуем обработанную статью ${processedArticle.id}, сообщение ${finalFormMessage.messageId}, задержка ${publicationInfo.delay}, медиа: ${publicationInfo.mediaList.size}, в канал ${publicationInfo.primaryChannel.name}, затем пересылаем в ${publicationInfo.forwardChannels.map { it.name }}")
+                                    val publishingResult = channelsFacade.postArticle(
+                                        processedArticle,
+                                        publicationInfo.primaryChannel,
+                                        publicationInfo.forwardChannels,
+                                        publicationInfo.mediaList
+                                    )
+                                    edit(
+                                        message = finalFormMessage,
+                                        text = articlePostedMessage(
+                                            processedArticle,
+                                            publishingResult
+                                        ),
+                                        markup = inlineKeyboard { row {} } // TODO: clear keyboard
+                                    )
+                                } else {
+                                    // Notify about cancellation
+                                    LOG.info("Отложенная публикация отменена для обработанной статьи ${processedArticle.id}, сообщение ${finalFormMessage.messageId}")
+                                    edit(
+                                        message = finalFormMessage,
+                                        text = canceledPublicationMessage(),
+                                        markup = inlineKeyboard { row {} } // TODO: clear keyboard
+                                    )
+                                }
+                            }
+                    }
                 }
-
-                // Publishing
-
-                LOG.debug("Публикуем обработанную статью ${processedArticle.id}, сообщение ${processedArticleMessage.messageId}, задержка ${publicationInfo.delay}, медиа: ${publicationInfo.mediaList.size}, в канал ${publicationInfo.primaryChannel.name}, затем пересылаем в ${publicationInfo.forwardChannels.map { it.name }}")
-                val publishingResult = channelsFacade.postArticle(
-                    processedArticle,
-                    publicationInfo.primaryChannel,
-                    publicationInfo.forwardChannels,
-                    publicationInfo.mediaList
-                )
-
-                edit(
-                    message = finalFormMessage,
-                    text = articlePostedMessage(
-                        processedArticle,
-                        publishingResult
-                    ),
-                    markup = inlineKeyboard { row {} } // TODO: clear keyboard
-                )
             }
         }
     }
@@ -1502,22 +1567,26 @@ internal class TelegramAssistantFacade(
                     "Для обработки выберите режим:"
         }
 
-        private fun selectArticleModeMessage(article: Article): String {
-            return "Выберите режим обработки статьи статьи id=${article.id}" +
-                    "\n" +
-                    article.title.boldHTML()
-        }
-
         private fun processedArticleMessage(processArticle: ProcessedArticle): String {
             return "Результат обработки ${processArticle.id}, режим ${processArticle.mode.boldHTML()} (символов: ${processArticle.content.length})." +
                     "\n" +
                     "\n" +
-                    processArticle.content +
+                    processArticle.content
+        }
+
+        private fun articleScheduledMessage(
+            processedArticle: ProcessedArticle,
+            publicationInfo: PublicationInfo
+        ): String {
+            val publicationTimeFormatted = OffsetDateTime
+                .now()
+                .plus(publicationInfo.delay.toJavaDuration())
+                .atZoneSameInstant(ZoneOffset.ofHours(+3))
+                .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
+            return "Статья ${processedArticle.id} будет опубликована $publicationTimeFormatted" +
                     "\n" +
-                    "\n" +
-                    "Для корректировки введите замечания." +
-                    "\n" +
-                    "Для публикации выберите каналы:"
+                    publicationInfo.writeForMessage()
+
         }
 
         private fun articlePostedMessage(
@@ -1549,18 +1618,13 @@ internal class TelegramAssistantFacade(
         ): String {
             return "Подготовка к посту:" +
                     "\n" +
-                    writeForMessage(
-                        mutableMapOf(
-                            "Первичный канал" to publicationInfo.primaryChannel.chatLink(),
-                            "Медиа файлы" to publicationInfo.mediaList.size
-                        ).apply {
-                            if (publicationInfo.forwardChannels.isNotEmpty()) {
-                                put("Forward каналы", publicationInfo.forwardChannels.joinToString { it.chatLink() })
-                            }
-                        }
-                    ) +
+                    publicationInfo.writeForMessage() +
                     "\n" +
                     "Выберите когда опубликовать новость, при необходимости прикрепите медиа файлы"
+        }
+
+        private fun canceledPublicationMessage(): String {
+            return "Публикация отменена"
         }
 
         //
@@ -1622,6 +1686,14 @@ internal class TelegramAssistantFacade(
                     if (publicationInfo.mediaList.isNotEmpty()) {
                         dataButton("Убрать медиа", clearMediaCallbackData())
                     }
+                }
+            }
+        }
+
+        private fun articleScheduledMarkup(): InlineKeyboardMarkup {
+            return inlineKeyboard {
+                row {
+                    dataButton("Отменить публикацию", cancelCallbackData())
                 }
             }
         }
@@ -1723,6 +1795,10 @@ internal class TelegramAssistantFacade(
 
         private fun postCallbackData(): String {
             return "POST"
+        }
+
+        private fun cancelCallbackData(): String {
+            return "CANCEL"
         }
 
         private fun clearMediaCallbackData(): String {
@@ -1869,6 +1945,19 @@ internal class TelegramAssistantFacade(
             }
 
             return null
+        }
+
+        private fun CoroutineScope.launchSafelyWithoutExceptionsSuppressCancellation(
+            block: suspend CoroutineScope.() -> Unit
+        ) = launchSafelyWithoutExceptions {
+            LOG.debug("Запуск отменяемого процесса ${block.hashCode()}")
+            try {
+                block().also {
+                    LOG.debug("Завершён отменяемый процесс ${block.hashCode()}")
+                }
+            } catch (cancellationException: CancellationException) {
+                LOG.debug("CancellationException подавлено для процесса ${block.hashCode()}")
+            }
         }
     }
 }

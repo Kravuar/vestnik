@@ -26,9 +26,4 @@ internal class ChannelsConfig {
         postsFacade,
         telegramBot
     )
-
-    @Bean
-    fun vkPublisher(
-        postsFacade: PostsFacade,
-    ) = VKPublisher(postsFacade)
 }
