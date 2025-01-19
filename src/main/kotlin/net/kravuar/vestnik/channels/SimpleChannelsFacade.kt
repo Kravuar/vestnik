@@ -126,7 +126,7 @@ internal open class SimpleChannelsFacade(
             val forwardedPosts = forwardChannels.map {
                 val forwardPublisher = publishers[it.platform]
                     ?: throw IllegalStateException("Публикатор в ${primaryChannel.platform} не найден")
-                forwardPublisher.forward(primaryChannel, primaryPost.id!!, it).also { post ->
+                forwardPublisher.forward(primaryChannel, primaryPost.channelPostId, it).also { post ->
                     LOG.info("Forward статьи: $processedArticle в канал ${post.channel.name} выполнена")
                 }
             }

@@ -82,6 +82,7 @@ import net.kravuar.vestnik.channels.Channel
 import net.kravuar.vestnik.channels.ChannelPlatform
 import net.kravuar.vestnik.channels.ChannelsFacade
 import net.kravuar.vestnik.commons.Constants
+import net.kravuar.vestnik.commons.escapeHtmlExcept
 import net.kravuar.vestnik.post.Post
 import net.kravuar.vestnik.processor.ProcessedArticle
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
@@ -1598,7 +1599,7 @@ internal class TelegramAssistantFacade(
             return "Результат обработки ${processArticle.id}, режим ${processArticle.mode.boldHTML()} (символов: ${processArticle.content.length})." +
                     "\n" +
                     "\n" +
-                    processArticle.content
+                    processArticle.content.escapeHtmlExcept()
         }
 
         private fun articleScheduledMessage(

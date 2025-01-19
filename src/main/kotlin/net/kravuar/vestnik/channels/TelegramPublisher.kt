@@ -12,7 +12,9 @@ import dev.inmo.tgbotapi.types.RawChatId
 import dev.inmo.tgbotapi.types.media.TelegramMediaPhoto
 import dev.inmo.tgbotapi.types.media.TelegramMediaVideo
 import dev.inmo.tgbotapi.types.message.HTML
+import io.ktor.util.escapeHTML
 import kotlinx.coroutines.runBlocking
+import net.kravuar.vestnik.commons.escapeHtmlExcept
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
 
@@ -51,7 +53,7 @@ internal open class TelegramPublisher(
                 0 -> {
                     telegramBot.send(
                         chatId = ChatId(RawChatId(channel.id)),
-                        text = processedArticle.content,
+                        text = processedArticle.content.escapeHtmlExcept(),
                         parseMode = HTML
                     )
                 }
@@ -61,7 +63,7 @@ internal open class TelegramPublisher(
                             ChannelsFacade.Media.Type.PHOTO -> {
                                 telegramBot.sendPhoto(
                                     chatId = ChatId(RawChatId(channel.id)),
-                                    text = processedArticle.content,
+                                    text = processedArticle.content.escapeHtmlExcept(),
                                     parseMode = HTML,
                                     fileId = file
                                 )
@@ -69,7 +71,7 @@ internal open class TelegramPublisher(
                             ChannelsFacade.Media.Type.VIDEO -> {
                                 telegramBot.sendVideo(
                                     chatId = ChatId(RawChatId(channel.id)),
-                                    text = processedArticle.content,
+                                    text = processedArticle.content.escapeHTML(),
                                     parseMode = HTML,
                                     video = file
                                 )

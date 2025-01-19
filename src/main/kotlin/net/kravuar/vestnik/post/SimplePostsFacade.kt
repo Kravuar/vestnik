@@ -1,6 +1,7 @@
 package net.kravuar.vestnik.post
 
 import jakarta.transaction.Transactional
+import net.kravuar.vestnik.channels.Channel
 import net.kravuar.vestnik.post.PostsFacade.PostInput
 import org.apache.logging.log4j.LogManager
 
@@ -10,6 +11,12 @@ internal open class SimplePostsFacade(
     override fun getPost(postId: Long): Post {
         return postsRepository.findById(postId).orElseThrow {
             IllegalStateException("Пост с id=$postId не найден")
+        }
+    }
+
+    override fun getPost(channel: Channel, channelPostId: Long): Post {
+        return postsRepository.findByChannelAndChannelPostId(channel, channelPostId).orElseThrow {
+            IllegalStateException("Пост с channelPostId=$channelPostId не найден в канале ${channel.name}")
         }
     }
 

@@ -12,6 +12,7 @@ interface PostsFacade {
         val isForwarded: Optional<Boolean>,
     )
     fun getPost(postId: Long): Post
+    fun getPost(channel: Channel, channelPostId: Long): Post
     fun getPostsOfArticle(articleId: Long): List<Post>
     fun existsPostOfProcessedArticleAndChannel(processedArticleId: Long, channelId: Long): Boolean
     fun addPost(postInput: PostInput): Post

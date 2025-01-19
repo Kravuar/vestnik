@@ -75,7 +75,7 @@ internal abstract class AbstractPostPublisher(
 
     @Transactional
     override fun forward(originalChannel: Channel, messageId: MessageId, targetChannel: Channel): Post {
-        val originalPost = postsFacade.getPost(messageId)
+        val originalPost = postsFacade.getPost(originalChannel, messageId)
         return createPost(
             originalPost.processedArticle,
             targetChannel,
