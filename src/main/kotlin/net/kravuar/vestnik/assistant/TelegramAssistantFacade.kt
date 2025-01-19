@@ -60,6 +60,7 @@ import dev.inmo.tgbotapi.utils.extensions.toHtml
 import dev.inmo.tgbotapi.utils.internal.htmlSpoilerClosingControl
 import dev.inmo.tgbotapi.utils.internal.htmlSpoilerControl
 import dev.inmo.tgbotapi.utils.row
+import io.ktor.util.escapeHTML
 import jakarta.transaction.Transactional
 import korlibs.time.max
 import korlibs.time.minutes
@@ -151,8 +152,7 @@ private enum class Command(
     ),
     ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
     DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
-    UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList()),
-    SHOW_COMMANDS("show_commands", "Показать список команд", emptyList());
+    UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList());
 
     data class Arg(
         val name: String,
@@ -220,22 +220,23 @@ internal class TelegramAssistantFacade(
     }
 
     internal suspend fun start(): Job {
-        val behaviour = bot.buildBehaviour(defaultExceptionsHandler = {
-            LOG.error("Ошибка во время работы ассистента", it)
-            when (it) {
+        val behaviour = bot.buildBehaviour(defaultExceptionsHandler = { exception ->
+            LOG.error("Ошибка во время работы ассистента", exception)
+
+            when (exception) {
                 is MessageIsNotModifiedException -> {
-                    LOG.warn("Ошибка модификации сообщения, изменённое совпадает с текущем", it)
+                    LOG.warn("Ошибка модификации сообщения, изменённое совпадает с текущем", exception)
                 }
 
                 is AssistantActionException -> {
                     try {
-                        if (it.replyTo != null) {
+                        if (exception.replyTo != null) {
                             bot.reply(
-                                message = it.replyTo,
-                                text = it.message
+                                message = exception.replyTo,
+                                text = exception.message
                             )
                         } else {
-                            requireNotNull(it.assistantMessage) {
+                            requireNotNull(exception.assistantMessage) {
                                 "Не задано ни сообщение для reply, ни сообщение ассистента для редактирования"
                             }.run {
                                 with(
@@ -244,7 +245,7 @@ internal class TelegramAssistantFacade(
                                 ) {
                                     bot.edit(
                                         message = this,
-                                        text = it.message +
+                                        text = exception.message +
                                                 "\n" +
                                                 this.content.text.boldHTML()
                                     )
@@ -252,8 +253,8 @@ internal class TelegramAssistantFacade(
                             }
                         }
 
-                    } catch (exception: Throwable) {
-                        LOG.error("Не удалось оповестить об ошибке $it, по причине: $exception")
+                    } catch (throwable: Throwable) {
+                        LOG.error("Не удалось оповестить об ошибке $exception, по причине: $throwable")
                     }
                 }
 
@@ -261,17 +262,17 @@ internal class TelegramAssistantFacade(
                     try {
                         bot.send(
                             chatId = adminChannel,
-                            text = "Ошибка: ${it.message}"
+                            text = "Ошибка: ${exception.message}"
                         )
-                    } catch (exception: Throwable) {
-                        LOG.error("Не удалось оповестить о сервисной ошибке: $it")
+                    } catch (throwable: Throwable) {
+                        LOG.error("Не удалось оповестить о сервисной ошибке: $exception", throwable)
                     }
                     try {
                         bot.deleteMessage(
-                            it.assistantMessage
+                            exception.assistantMessage
                         )
-                    } catch (exception: Throwable) {
-                        LOG.error("Не удалось удалить сообщение ${it.assistantMessage.messageId} ассистента с ошибкой: $it")
+                    } catch (throwable: Throwable) {
+                        LOG.error("Не удалось удалить сообщение ${exception.assistantMessage.messageId} ассистента с ошибкой: $exception")
                     }
                 }
 
@@ -280,14 +281,14 @@ internal class TelegramAssistantFacade(
                 }
 
                 else -> {
-                    LOG.error("Произошла непредвиденная ошибка. ${it.message ?: it}")
+                    LOG.error("Произошла непредвиденная ошибка. ${exception.message ?: exception}")
                     try {
                         bot.send(
                             chatId = adminChannel,
-                            text = "Произошла непредвиденная ошибка: ${it.message ?: it}"
+                            text = "Произошла непредвиденная ошибка: ${exception.message ?: exception}"
                         )
                     } catch (exception: Throwable) {
-                        LOG.error("Не удалось оповестить о непредвиденной ошибке: ${it.message ?: it}")
+                        LOG.error("Не удалось оповестить о непредвиденной ошибке: ${exception.message ?: exception}")
                     }
                 }
             }
@@ -736,8 +737,13 @@ internal class TelegramAssistantFacade(
                         page
                     )
                     MessageWithReplyMarkup(
-                        "Список режимов для источника $source" + if (modes.content.isNotEmpty()) {
-                            ": " + modes.content.joinToString()
+                        "Список режимов" +
+                                if (source != null) {
+                                    "для источника $source:"
+                                } else {
+                                    ":"
+                                } + if (modes.content.isNotEmpty()) {
+                            modes.content.joinToString()
                         } else {
                             " пуст"
                         },
@@ -771,33 +777,54 @@ internal class TelegramAssistantFacade(
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                handleArgumentCommand(
-                    Command.SHOW_CHAIN,
-                    userMessage,
-                    args,
-                    { argsByName ->
-                        aiArticleProcessingNodesFacade.getChainMode(
-                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
-                            requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
+                val pageSupplier = { source: String?, mode: String, page: Int ->
+                    val chain = aiArticleProcessingNodesFacade.getChain(
+                        source?.let { sourcesFacade.getSourceByName(it) },
+                        mode,
+                        page
+                    )
+                    val chainAsString = writeForMessage(chain.content.map {
+                        mapOf(
+                            "Id узла" to it.id,
+                            "Модель" to it.model,
+                            "Температура" to it.temperature,
+                            "Размер промпта" to it.prompt.length,
+                            "Промпт" to it.prompt.escapeHTML(),
                         )
-                    },
-                    { argsByName, chain ->
-                        val chainAsString = writeForMessage(chain.map {
-                            mapOf(
-                                "Id узла" to it.id,
-                                "Модель" to it.model,
-                                "Температура" to it.temperature,
-                                "Размер промпта" to it.prompt.length,
-                                "Промпт" to it.prompt,
-                            )
-                        })
-                        "Цепочка (${chain.size} узлов) для режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
+                    })
+                    MessageWithReplyMarkup(
+                        "Цепочка для режима $mode" + (source?.let {
                             ", источника $it:"
                         } ?: ":") +
                                 "\n" +
-                                chainAsString
+                                chainAsString,
+                        simplePaginationMarkup(page, chain.totalPages)
+                    )
+                }
+                handleCallbackCommand(
+                    Command.SHOW_CHAIN,
+                    args,
+                    { PAGE_REGEX.matches(it) },
+                    { argsByName ->
+                        pageSupplier(
+                            argsByName["source"],
+                            requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
+                            1
+                        )
                     },
-                    { _ -> "Не удалось найти цепочку" }
+                    userMessage,
+                    { argsByName, message, callback ->
+                        val page = pageSupplier(
+                            argsByName["source"],
+                            argsByName["mode"]!!,
+                            callback.toInt()
+                        )
+                        edit(
+                            message = message,
+                            text = page.message,
+                            markup = page.replyMarkup
+                        )
+                    }
                 )
             }
 
@@ -861,7 +888,7 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "prevNodeId" to "ID предыдущего узла (Обязательно)",
+                                    "prev" to "ID предыдущего узла (Обязательно)",
                                     "model" to "Модель узла (По умолчанию: - ${Constants.DEFAULT_MODEL})",
                                     "temperature" to "Температура узла (По умолчанию: - ${Constants.DEFAULT_TEMPERATURE})",
                                     "prompt" to "Промпт узла (Обязательно)",
@@ -869,7 +896,7 @@ internal class TelegramAssistantFacade(
                             ),
                     { input ->
                         aiArticleProcessingNodesFacade.insertNode(
-                            requireNotNull(input["prevNodeId"]) { "ID предыдущего узла обязателен" }.toLong(),
+                            requireNotNull(input["prev"]) { "ID предыдущего узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
                                 input["model"]?.let {
                                     model = Optional.of(it)
@@ -882,7 +909,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} добавлен в цепочку для режима ${node.mode}" + node.source?.let { ", источника ${it.name}" } },
+                    { _, node -> "Узел ${node.id} добавлен в цепочку для режима ${node.mode}" + (node.source?.let { ", источника ${it.name}" } ?: "") },
                     { "Не удалось добавить узел" },
                 )
             }
@@ -945,7 +972,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} обновлён в цепочке режима ${node.mode}" + node.source?.let { ", источника ${it.name}" } },
+                    { _, node -> "Узел ${node.id} обновлён в цепочке режима ${node.mode}" + (node.source?.let { ", источника ${it.name}" } ?: "") },
                     { "Не удалось обновить узел" },
                 )
             }
@@ -1478,7 +1505,7 @@ internal class TelegramAssistantFacade(
         private val LOG = LogManager.getLogger(TelegramAssistantFacade::class.java)
 
         private const val SPLIT_INPUT = "="
-        private val SPLIT = "===============================================".spoilerHTML() + "\n"
+        private const val SPLIT = "===============================================" + "\n"
         private val DEFAULT_PARSE_MODE = HTML
 
         //

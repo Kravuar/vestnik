@@ -38,7 +38,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
             }
     }
 
-    override fun getChainMode(source: Source?, mode: String): List<ChainedAIArticleProcessingNode> {
+    override fun getChain(source: Source?, mode: String): List<ChainedAIArticleProcessingNode> {
         // Search for specified source
         return getChainOptional(
             source,
@@ -50,6 +50,19 @@ internal open class SimpleAIArticleProcessingNodesFacade(
                     "Цепочка для режима $mode" +
                             (source?.let { ", источника $it" } ?: "") +
                             " не найдена"
+                )
+            }
+        }
+    }
+
+    override fun getChain(source: Source?, mode: String, page: Int): Page<ChainedAIArticleProcessingNode> {
+        // Search for specified source
+        return getChain(source, mode).let {
+            // TODO: this is bad, but proper pagination is too complex for recursive table
+            it.chunked(Page.DEFAULT_PAGE_SIZE).let { pages ->
+                Page(
+                    pages.size,
+                    pages[page - 1]
                 )
             }
         }
@@ -155,14 +168,25 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         lock.withLock {
             // Insert new
             val newNode = ChainedAIArticleProcessingNode(
-                previousNode.source,
-                previousNode.mode,
-                input.model.orElse(DEFAULT_MODEL),
-                input.temperature.orElse(DEFAULT_TEMPERATURE),
-                input.prompt.orElseThrow { IllegalArgumentException("Промпт не указан") },
-                previousNode,
-                nextNode
+                source = previousNode.source,
+                mode = previousNode.mode,
+                model = input.model.orElse(DEFAULT_MODEL),
+                temperature = input.temperature.orElse(DEFAULT_TEMPERATURE),
+                prompt = input.prompt.orElseThrow { IllegalArgumentException("Промпт не указан") },
+                parent = previousNode,
+                child = nextNode
             )
+
+            // Temporally update links
+            previousNode.child = null
+            if (nextNode != null) {
+                nextNode.parent = null
+            }
+
+            chainedAiArticleProcessingNodesRepository.saveAll(
+                listOfNotNull(previousNode, nextNode)
+            )
+            chainedAiArticleProcessingNodesRepository.flush()
 
             // Update links
             previousNode.child = newNode
@@ -194,17 +218,27 @@ internal open class SimpleAIArticleProcessingNodesFacade(
         val lock = locks.get(Pair(existingNode.source?.id, existingNode.mode))
 
         lock.withLock {
+            // Temporaly update links
+            if (previousNode != null) {
+                previousNode.child = null
+            }
+            if (nextNode != null) {
+                nextNode.parent = null
+            }
+            existingNode.parent = null
+            existingNode.child = null
+            chainedAiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, existingNode, nextNode))
+            chainedAiArticleProcessingNodesRepository.flush()
+
             // Update links
             if (previousNode != null && nextNode != null) {
                 previousNode.child = nextNode
                 nextNode.parent = previousNode
-            } else if (nextNode != null) {
-                nextNode.parent = null
             }
-            chainedAiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, nextNode))
-
             // Delete node
             chainedAiArticleProcessingNodesRepository.delete(existingNode)
+            chainedAiArticleProcessingNodesRepository.flush()
+            chainedAiArticleProcessingNodesRepository.saveAll(listOfNotNull(previousNode, nextNode))
 
             return true.also {
                 LOG.info(
@@ -286,7 +320,7 @@ internal open class SimpleAIArticleProcessingNodesFacade(
                 """Ты являешься создателем контента в социальной сети и специализируешься на форматировании новостных сообщений с помощью тегов.
                 |Твоя цель - сделать текст более привлекательным с помощью тегов форматирования текста и эмодзи.
 
-                |1. Отформатируй предоставленный текст с помощью HTML тегов <b>, <i>, <u> и <a> (используй исключительно эти теги), а также UNICODE эмодзи.
+                |1. Отформатируй предоставленный текст с помощью HTML тегов b, i, u и a (используй исключительно эти теги), а также UNICODE эмодзи.
                 |2. Используйте символы, такие как "•" или "—", для структурирования контента.
                 |3. Убедитесь, что после каждого заголовка есть пробел.
                 |4. Добавляйте эмодзи в небольшом количестве, либо только в начале заголовков, либо только в следующих за заголовком абзацах.

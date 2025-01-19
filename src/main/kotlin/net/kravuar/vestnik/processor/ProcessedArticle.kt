@@ -10,9 +10,11 @@ import jakarta.persistence.ManyToOne
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.articles.Article
+import org.springframework.validation.annotation.Validated
 import java.time.OffsetDateTime
 
 @Entity
+@Validated
 class ProcessedArticle(
     @ManyToOne(optional = false)
     var article: Article,
@@ -20,8 +22,8 @@ class ProcessedArticle(
     @Lob
     var content: String,
     @Column(nullable = false)
-    @NotBlank
-    @Size(max = 16)
+    @get:NotBlank
+    @get:Size(min=1, max = 16)
     var mode: String,
     @Column(nullable = false)
     val createdAt: OffsetDateTime = OffsetDateTime.now(),

@@ -24,7 +24,7 @@ class Channel(
     @Column(nullable = false)
     var id: Long,
     @Column(nullable = false, unique = true)
-    @NotBlank
+    @get:NotBlank
     var name: String,
     @Column(nullable = false)
     var platform: ChannelPlatform,

@@ -9,6 +9,8 @@ import jakarta.persistence.Id
 import jakarta.persistence.Lob
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToOne
+import jakarta.validation.constraints.DecimalMax
+import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import net.kravuar.vestnik.source.Source
@@ -24,17 +26,18 @@ class ChainedAIArticleProcessingNode(
     @ManyToOne(optional = true)
     var source: Source? = null,
     @Column(nullable = false)
-    @NotBlank
-    @Size(max = 16)
+    @get:NotBlank
+    @get:Size(min=1, max = 16)
     var mode: String,
-    @NotBlank
     @Column(nullable = false)
+    @get:NotBlank
     override var model: String,
     @Column(nullable = false)
-    @Size(min = 0, max = 1)
+    @get:DecimalMin("0")
+    @get:DecimalMax("1")
     override var temperature: Double,
-    @NotBlank
     @Column(nullable = false)
+    @get:NotBlank
     @Lob
     override var prompt: String,
     @OneToOne(fetch = FetchType.LAZY)

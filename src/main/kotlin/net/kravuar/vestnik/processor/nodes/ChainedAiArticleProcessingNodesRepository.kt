@@ -41,7 +41,6 @@ internal interface ChainedAiArticleProcessingNodesRepository :
         FROM ChainedAIArticleProcessingNode c
         LEFT JOIN c.source s
         WHERE c.parent IS NULL
-          AND c.mode = :mode
           AND (
                 (:source IS NULL AND s IS NULL) OR
                 (:source IS NOT NULL AND s = :source AND s.deleted = false)

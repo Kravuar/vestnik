@@ -15,15 +15,15 @@ import java.time.Duration
 @Entity
 class Source(
     @Column(nullable = false, unique = true)
-    @NotBlank
+    @get:NotBlank
     var name: String,
     @Column(nullable = false)
-    @NotBlank
+    @get:NotBlank
     var url: String,
     @Column(nullable = false)
     var scheduleDelay: Duration,
     @Column(nullable = false)
-    @NotBlank
+    @get:NotBlank
     var contentXPath: String,
     @ManyToMany(fetch = FetchType.EAGER, cascade = [CascadeType.PERSIST, CascadeType.MERGE])
     var channels: MutableSet<Channel> = HashSet(),

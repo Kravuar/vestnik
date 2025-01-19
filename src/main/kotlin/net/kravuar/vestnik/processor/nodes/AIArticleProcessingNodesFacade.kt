@@ -11,7 +11,8 @@ interface AIArticleProcessingNodesFacade {
         val mode: String,
     )
     fun getChains(source: Source? = null, page: Int): Page<ChainInfo>
-    fun getChainMode(source: Source? = null, mode: String): List<ChainedAIArticleProcessingNode>
+    fun getChain(source: Source? = null, mode: String): List<ChainedAIArticleProcessingNode>
+    fun getChain(source: Source? = null, mode: String, page: Int): Page<ChainedAIArticleProcessingNode>
     fun getModes(source: Source? = null, page: Int): Page<String>
 
     fun createChain(source: Source? = null, mode: String): List<ChainedAIArticleProcessingNode>
