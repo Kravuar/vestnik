@@ -1544,7 +1544,7 @@ internal class TelegramAssistantFacade(
         private fun parseStringToMap(input: String): Map<String, String> {
             return INPUT_REGEX.findAll(input).associate {
                 val (key, value) = it.destructured
-                key to value
+                key to value.trim()
             }
         }
 

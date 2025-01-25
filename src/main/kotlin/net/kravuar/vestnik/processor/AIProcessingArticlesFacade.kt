@@ -6,6 +6,7 @@ import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import org.apache.logging.log4j.LogManager
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -59,6 +60,7 @@ internal open class AIProcessingArticlesFacade(
                     Prompt(
                         listOf<Message>(
                             SystemMessage(reprocessNode.prompt),
+                            UserMessage(content),
                             UserMessage(remarks)
                         ),
                         ChatOptionsBuilder.builder()
