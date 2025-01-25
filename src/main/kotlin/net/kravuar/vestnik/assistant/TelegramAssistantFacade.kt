@@ -80,6 +80,7 @@ import net.kravuar.vestnik.channels.ChannelPlatform
 import net.kravuar.vestnik.channels.ChannelsFacade
 import net.kravuar.vestnik.commons.Constants
 import net.kravuar.vestnik.commons.escapeHtmlExcept
+import net.kravuar.vestnik.commons.tryGet
 import net.kravuar.vestnik.post.Post
 import net.kravuar.vestnik.processor.ProcessedArticle
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
@@ -451,34 +452,34 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "name" to "Имя",
-                                    "url" to "URL",
-                                    "schedule" to "Периодичность (в минутах)",
-                                    "xpath" to "XPATH к контенту",
-                                    "channels" to "Целевые каналы (имена через запятую)",
-                                    "suspended" to "Приостановлен (опционально)",
+                                    "name (n)" to "Имя",
+                                    "url (u)" to "URL",
+                                    "schedule (sc)" to "Периодичность (в минутах)",
+                                    "xpath (x)" to "XPATH к контенту",
+                                    "channels (c)" to "Целевые каналы (имена через запятую)",
+                                    "suspended (s)" to "Приостановлен (опционально)",
                                 )
                             ),
                     { input ->
                         sourcesFacade.addSource(SourcesFacade.SourceInput().apply {
-                            input["name"]?.let {
+                            input.tryGet("name", "n")?.let {
                                 name = Optional.of(it)
                             }
-                            input["url"]?.let {
+                            input.tryGet("url", "u")?.let {
                                 url = Optional.of(it)
                             }
-                            input["schedule"]?.let {
+                            input.tryGet("schedule", "sc")?.let {
                                 scheduleDelay = Optional.of(java.time.Duration.ofMinutes(it.toLong()))
                             }
-                            input["xpath"]?.let {
+                            input.tryGet("xpath", "x")?.let {
                                 contentXPath = Optional.of(it)
                             }
-                            input["channels"]?.let {
+                            input.tryGet("channels", "c")?.let {
                                 channels = Optional.of(it.split(",").map { name ->
                                     channelsFacade.getChannelByName(name.trim())
                                 }.toMutableSet())
                             }
-                            input["suspended"]?.toBoolean()?.let {
+                            input.tryGet("suspended", "s")?.toBoolean()?.let {
                                 suspended = Optional.of(it)
                             }
                         })
@@ -500,37 +501,37 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "name" to "Имя обновляемого источника (обязательно)",
-                                    "newName" to "Имя",
-                                    "url" to "URL",
-                                    "schedule" to "Периодичность (в минутах)",
-                                    "xpath" to "XPATH к контенту",
-                                    "channels" to "Целевые каналы (имена через запятую)",
-                                    "suspended" to "Приостановлен",
+                                    "name (n)" to "Имя обновляемого источника (обязательно)",
+                                    "newName (nn)" to "Имя",
+                                    "url (u)" to "URL",
+                                    "schedule (sc)" to "Периодичность (в минутах)",
+                                    "xpath (x)" to "XPATH к контенту",
+                                    "channels (c)" to "Целевые каналы (имена через запятую)",
+                                    "suspended (s)" to "Приостановлен",
                                 )
                             ),
                     { input ->
                         sourcesFacade.updateSource(
-                            requireNotNull(input["name"]) { "Не указано имя обновляемого источника" },
+                            requireNotNull(input.tryGet("name", "n")) { "Не указано имя обновляемого источника" },
                             SourcesFacade.SourceInput().apply {
-                                input["newName"]?.let {
+                                input.tryGet("newName", "nn")?.let {
                                     name = Optional.of(it)
                                 }
-                                input["url"]?.let {
+                                input.tryGet("url", "u")?.let {
                                     url = Optional.of(it)
                                 }
-                                input["schedule"]?.let {
+                                input.tryGet("schedule", "sc")?.let {
                                     scheduleDelay = Optional.of(java.time.Duration.ofMinutes(it.toLong()))
                                 }
-                                input["xpath"]?.let {
+                                input.tryGet("xpath", "x")?.let {
                                     contentXPath = Optional.of(it)
                                 }
-                                input["channels"]?.let {
+                                input.tryGet("channels", "c")?.let {
                                     channels = Optional.of(it.split(",").map { name ->
                                         channelsFacade.getChannelByName(name.trim())
                                     }.toMutableSet())
                                 }
-                                input["suspended"]?.toBoolean()?.let {
+                                input.tryGet("suspended", "s")?.toBoolean()?.let {
                                     suspended = Optional.of(it)
                                 }
                             })
@@ -623,23 +624,23 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "id" to "ID канала",
-                                    "name" to "Имя канала",
-                                    "sources" to "Источники (имена через запятую)",
+                                    "id (i)" to "ID канала",
+                                    "name (n)" to "Имя канала",
+                                    "sources (s)" to "Источники (имена через запятую)",
                                 )
                             ),
-                    @Transactional() { input ->
+                    @Transactional { input ->
                         channelsFacade.addChannel(ChannelsFacade.ChannelInput().apply {
-                            input["name"]?.let {
+                            input.tryGet("name", "n")?.let {
                                 name = Optional.of(it)
                             }
-                            input["id"]?.let {
+                            input.tryGet("id", "i")?.let {
                                 id = Optional.of(it.toLong())
                             }
-                            input["platform"]?.let {
+                            input.tryGet("platform", "p")?.let {
                                 platform = Optional.of(ChannelPlatform.valueOf(it.uppercase()))
                             }
-                            input["sources"]?.let {
+                            input.tryGet("sources", "s")?.let {
                                 sources = Optional.of(it.split(",").map { name ->
                                     sourcesFacade.getSourceByName(name.trim())
                                 }.toMutableSet())
@@ -883,23 +884,23 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "prev" to "ID предыдущего узла (Обязательно)",
-                                    "model" to "Модель узла (По умолчанию: - ${Constants.DEFAULT_MODEL})",
-                                    "temperature" to "Температура узла (По умолчанию: - ${Constants.DEFAULT_TEMPERATURE})",
-                                    "prompt" to "Промпт узла (Обязательно)",
+                                    "prevNode (pn)" to "ID предыдущего узла (Обязательно)",
+                                    "model (m)" to "Модель узла (По умолчанию: ${Constants.DEFAULT_MODEL})",
+                                    "temperature (t)" to "Температура узла (По умолчанию: ${Constants.DEFAULT_TEMPERATURE})",
+                                    "prompt (p)" to "Промпт узла (Обязательно)",
                                 )
                             ),
                     { input ->
                         aiArticleProcessingNodesFacade.insertNode(
-                            requireNotNull(input["prev"]) { "ID предыдущего узла обязателен" }.toLong(),
+                            requireNotNull(input.tryGet("prevNode", "pn")) { "ID предыдущего узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
-                                input["model"]?.let {
+                                input.tryGet("model", "m")?.let {
                                     model = Optional.of(it)
                                 }
-                                input["temperature"]?.let {
+                                input.tryGet("temperature", "t")?.let {
                                     temperature = Optional.of(it.toDouble())
                                 }
-                                input["prompt"]?.let {
+                                input.tryGet("prompt", "p")?.let {
                                     prompt = Optional.of(it)
                                 }
                             })
@@ -946,23 +947,23 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "nodeId" to "ID узла (Обязательно)",
-                                    "model" to "Модель узла",
-                                    "temperature" to "Температура узла",
-                                    "prompt" to "Промпт узла"
+                                    "nodeId (ni)" to "ID узла (Обязательно)",
+                                    "model (m)" to "Модель узла",
+                                    "temperature (t)" to "Температура узла",
+                                    "prompt (p)" to "Промпт узла"
                                 )
                             ),
                     { input ->
                         aiArticleProcessingNodesFacade.updateNode(
-                            requireNotNull(input["nodeId"]) { "ID узла обязателен" }.toLong(),
+                            requireNotNull(input.tryGet("nodeId", "ni")) { "ID узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
-                                input["model"]?.let {
+                                input.tryGet("model", "m")?.let {
                                     model = Optional.of(it)
                                 }
-                                input["temperature"]?.let {
+                                input.tryGet("temperature", "t")?.let {
                                     temperature = Optional.of(it.toDouble())
                                 }
-                                input["prompt"]?.let {
+                                input.tryGet("prompt", "p")?.let {
                                     prompt = Optional.of(it)
                                 }
                             })

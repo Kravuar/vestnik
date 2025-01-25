@@ -18,3 +18,7 @@ fun String.escapeHtmlExcept(allowedTags: List<String> = listOf("b", "i", "a", "u
         }
     }
 }
+
+fun <K, V> Map<K, V>.tryGet(key: K, vararg otherKeys: K): V? {
+    return this[key] ?: otherKeys.firstNotNullOfOrNull { this[it] }
+}
