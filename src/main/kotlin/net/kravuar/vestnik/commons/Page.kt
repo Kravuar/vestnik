@@ -5,6 +5,6 @@ data class Page<T>(
     val content: List<T>
 ) {
     companion object {
-        const val DEFAULT_PAGE_SIZE = 3
+        const val DEFAULT_PAGE_SIZE = 2
     }
 }

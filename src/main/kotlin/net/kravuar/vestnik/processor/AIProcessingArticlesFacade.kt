@@ -59,7 +59,7 @@ internal open class AIProcessingArticlesFacade(
                     Prompt(
                         listOf<Message>(
                             SystemMessage(reprocessNode.prompt),
-                            UserMessage(content)
+                            UserMessage(remarks)
                         ),
                         ChatOptionsBuilder.builder()
                             .withModel(reprocessNode.model)
@@ -67,7 +67,7 @@ internal open class AIProcessingArticlesFacade(
                             .build()
                     )
                 ).result.output.content
-                content = reprocessedContent
+                this.content = reprocessedContent
                 processedArticleRepository.save(this).also {
                     LOG.info("Повторная обработка статьи $this завершена")
                 }

@@ -56,9 +56,6 @@ import dev.inmo.tgbotapi.types.message.content.VideoContent
 import dev.inmo.tgbotapi.types.queries.callback.MessageCallbackQuery
 import dev.inmo.tgbotapi.types.queries.callback.MessageDataCallbackQuery
 import dev.inmo.tgbotapi.utils.PreviewFeature
-import dev.inmo.tgbotapi.utils.extensions.toHtml
-import dev.inmo.tgbotapi.utils.internal.htmlSpoilerClosingControl
-import dev.inmo.tgbotapi.utils.internal.htmlSpoilerControl
 import dev.inmo.tgbotapi.utils.row
 import io.ktor.util.escapeHTML
 import jakarta.transaction.Transactional
@@ -369,8 +366,7 @@ internal class TelegramAssistantFacade(
                     val sourcesAsString = writeForMessage(sources.content.map {
                         mapOf(
                             "Id" to it.id,
-                            "Name" to it.name,
-                            "URL" to it.url,
+                            "Name" to it.name.linkHTML(it.url),
                             "Периодичность" to it.scheduleDelay.toKotlinDuration().toString(),
                             "Приостановлен" to if (it.suspended == true) {
                                 "да"
@@ -421,11 +417,10 @@ internal class TelegramAssistantFacade(
                             requireNotNull(argsByName["name"]) { "Имя источника является обязательным" }
                         )
                     },
-                    { argsByName, source ->
+                    { _, source ->
                         val sourceAsString = writeForMessage(
                             mapOf(
                                 "Id" to source.id,
-                                "URL" to source.url,
                                 "Периодичность" to source.scheduleDelay.toKotlinDuration().toString(),
                                 "XPATH к контенту" to source.contentXPath,
                                 "Целевые Каналы" to source.channels.joinToString { channel -> channel.chatLink() },
@@ -436,7 +431,7 @@ internal class TelegramAssistantFacade(
                                 },
                             )
                         )
-                        "Источник ${argsByName["name"]!!}:" +
+                        "Источник ${source.name.linkHTML(source.url)}:" +
                                 "\n" +
                                 sourceAsString
                     },
@@ -630,7 +625,6 @@ internal class TelegramAssistantFacade(
                                 mapOf(
                                     "id" to "ID канала",
                                     "name" to "Имя канала",
-                                    "platform" to "Платформа (${ChannelPlatform.entries.joinToString("/") { it.name }})",
                                     "sources" to "Источники (имена через запятую)",
                                 )
                             ),
@@ -983,7 +977,7 @@ internal class TelegramAssistantFacade(
                     BotCommand(
                         command.commandName,
                         command.description + if (command.args.isNotEmpty()) {
-                            " аргументы: ${command.args.joinToString(", ") { it.toString() }}"
+                            ", аргументы: ${command.args.joinToString(", ") { it.toString() }}"
                         } else {
                             ""
                         }
@@ -1294,6 +1288,12 @@ internal class TelegramAssistantFacade(
                                 val selectedChannels = processedArticle.article.source.channels.filter {
                                     it.id in selected
                                 }
+                                if (selectedChannels.isEmpty()) {
+                                    throw AssistantActionException(
+                                        replyTo = processedArticleMessage,
+                                        message = "Не выбрано ни одного канала"
+                                    )
+                                }
                                 this@with.handleProcessedArticlePublishing(
                                     processedArticleMessage,
                                     selectedChannels,
@@ -1513,12 +1513,11 @@ internal class TelegramAssistantFacade(
         // PARSING/FORMATTING
         //
 
-        private fun String.spoilerHTML(): String {
-            return "<$htmlSpoilerControl>${toHtml()}</$htmlSpoilerClosingControl>"
-        }
-
         private val INPUT_REGEX =
-            Regex("(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)")
+            Regex(
+                "(^[a-zA-Z]+?)\\s*$SPLIT_INPUT\\s*([\\s\\S]*?)(?=\\n^\\S+\\s*$SPLIT_INPUT\\s*|\\Z)",
+                RegexOption.MULTILINE
+            )
 
         private fun parseArgs(commandArgs: List<Command.Arg>, args: Array<String>): Map<String, String?> {
             if (commandArgs.size != args.size) {
@@ -1528,7 +1527,7 @@ internal class TelegramAssistantFacade(
                 { arg -> commandArgs[arg.index].name },
                 { arg ->
                     if (commandArgs[arg.index].optional) {
-                        arg.value.let { value ->
+                        arg.value.trim().let { value ->
                             if (value == "null") {
                                 null
                             } else {
@@ -1543,18 +1542,10 @@ internal class TelegramAssistantFacade(
         }
 
         private fun parseStringToMap(input: String): Map<String, String> {
-
-            val map = mutableMapOf<String, String>()
-
-            input.lines().forEach { line ->
-                val matchResult = INPUT_REGEX.find(line)
-                if (matchResult != null) {
-                    val (key, value) = matchResult.destructured
-                    map[key] = value
-                }
+            return INPUT_REGEX.findAll(input).associate {
+                val (key, value) = it.destructured
+                key to value
             }
-
-            return map
         }
 
         private fun writeForMessage(pair: Pair<String, Any?>): String {
@@ -1586,13 +1577,9 @@ internal class TelegramAssistantFacade(
                         mapOf(
                             "Id статьи" to article.id,
                             "Источник" to article.source.name,
-                            "Заголовок" to article.title,
-                            "Описание" to article.description,
-                            "URL" to article.url
+                            "Заголовок" to article.title.linkHTML(article.url),
                         )
-                    ) +
-                    "\n" +
-                    "Для обработки выберите режим:"
+                    )
         }
 
         private fun processedArticleMessage(processArticle: ProcessedArticle): String {

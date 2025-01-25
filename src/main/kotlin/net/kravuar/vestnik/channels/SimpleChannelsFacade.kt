@@ -60,7 +60,7 @@ internal open class SimpleChannelsFacade(
             Channel(
                 input.id.orElseThrow { IllegalArgumentException("При создании канала id обязательно") },
                 input.name.orElseThrow { IllegalArgumentException("При создании канала имя обязательно") },
-                input.platform.orElseThrow { IllegalArgumentException("При создании канала платформа обязательно") },
+                input.platform.orElse(ChannelPlatform.TG),
             ).apply {
                 input.sources.ifPresent { sources = it }
             }).also {
