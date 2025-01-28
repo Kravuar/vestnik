@@ -2,6 +2,7 @@ package net.kravuar.vestnik.articles
 
 import com.apptasticsoftware.rssreader.Item
 import jakarta.transaction.Transactional
+import kotlinx.serialization.json.JsonNull.content
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
@@ -74,10 +75,10 @@ internal open class SimpleArticlesFacade(
 
         fun itemToArticle(source: Source, item: Item): Article {
             return Article(
-                source,
-                item.title.orElseThrow(),
-                item.description.orElseThrow(),
-                item.link.orElseThrow(),
+                source = source,
+                title = item.title.orElseThrow(),
+                description = item.description.orElse(null),
+                url = item.link.orElseThrow(),
             )
         }
     }

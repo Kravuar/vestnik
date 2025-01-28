@@ -6,7 +6,6 @@ import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.scrapping.Scrapper
 import org.apache.logging.log4j.LogManager
-import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -25,8 +24,11 @@ internal open class AIProcessingArticlesFacade(
     override fun processArticle(article: Article, mode: String): ProcessedArticle {
         return aiArticleProcessingNodesFacade.getChain(article.source, mode).let { chain ->
             LOG.info("Обработка режимом $mode статьи $article")
+            val content = article.source.contentXPath?.let {
+                scrapper.scrap(article.url, it)
+            } ?: article.description ?: throw IllegalStateException("Не задан XPath для сбора контента, а также отсутствует контент в самой новости")
             val processedContent = chain
-                .fold(scrapper.scrap(article.url, article.source.contentXPath)) { currentContent, node ->
+                .fold(content) { currentContent, node ->
                     chatModel.call(
                         Prompt(
                             listOf<Message>(

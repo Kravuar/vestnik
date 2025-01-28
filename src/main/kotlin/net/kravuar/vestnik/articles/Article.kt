@@ -16,9 +16,9 @@ class Article(
     var source: Source,
     @Column(nullable = false)
     var title: String,
-    @Column(nullable = false)
+    @Column
     @Lob
-    var description: String,
+    var description: String? = null,
     @Column(nullable = false)
     var url: String,
     @Column(nullable = false)

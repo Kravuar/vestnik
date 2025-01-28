@@ -199,9 +199,6 @@ internal class TelegramAssistantFacade(
         LOG.info("Оповещение о новой статье $article")
 
         val modes = processedArticlesFacade.getModes(article, 1)
-        if (modes.totalPages == 0) {
-            throw IllegalStateException("Отсутствуют режимы для обработки новости")
-        }
         runBlocking {
             bot.send(
                 chatId = adminChannel,

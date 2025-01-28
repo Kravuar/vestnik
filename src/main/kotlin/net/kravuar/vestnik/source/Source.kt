@@ -22,9 +22,8 @@ class Source(
     var url: String,
     @Column(nullable = false)
     var scheduleDelay: Duration,
-    @Column(nullable = false)
-    @get:NotBlank
-    var contentXPath: String,
+    @Column
+    var contentXPath: String? = null,
     @ManyToMany(fetch = FetchType.EAGER, cascade = [CascadeType.PERSIST, CascadeType.MERGE])
     var channels: MutableSet<Channel> = HashSet(),
     @Column(nullable = false)

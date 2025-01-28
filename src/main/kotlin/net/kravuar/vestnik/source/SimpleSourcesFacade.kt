@@ -13,7 +13,6 @@ import java.time.ZonedDateTime
 internal open class SimpleSourcesFacade(
     private val sourcesRepository: SourcesRepository
 ) : SourcesFacade {
-    private val rssReader = RssReader()
 
     override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
         with(getSourceByName(sourceName)) {
@@ -21,19 +20,18 @@ internal open class SimpleSourcesFacade(
                 LOG.info("Источник $sourceName приостановлен, fetch не будет произведён")
                 return emptyList()
             }
-            return rssReader
+            return RssReader()
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
-                .filter { it.pubDateZonedDateTime.orElseThrow() > ZonedDateTime.now() - delta }
+                .filter { article -> article.pubDateZonedDateTime.map { it > ZonedDateTime.now() - delta }.orElse(false) }
                 .toList().also {
                     LOG.info(
-                        "Получены новости из источника $sourceName: ${
-                            if (it.isNotEmpty()) {
-                                it.joinToString { article -> "${article.link} | ${article.title}" }
-                            } else {
-                                "Пусто"
-                            }
-                        }")
+                        if (it.isNotEmpty()) {
+                            "Получены новости из источника $sourceName: " + it.joinToString { article -> "${article.link} | ${article.title}" }
+                        } else {
+                            "Новостей из источника $sourceName не найдено"
+                        }
+                    )
                 }
         }
     }
@@ -88,8 +86,8 @@ internal open class SimpleSourcesFacade(
                 source.name.orElseThrow { IllegalArgumentException("Имя источника обязательно") },
                 source.url.orElseThrow { IllegalArgumentException("URL обязателен") },
                 source.scheduleDelay.orElseThrow { IllegalArgumentException("Периодичность источника обязательна") },
-                source.contentXPath.orElseThrow { IllegalArgumentException("XPath к контенту обязателен") },
             ).apply {
+                source.contentXPath.ifPresent { this.contentXPath = it }
                 source.suspended.ifPresent { this.suspended = it }
                 source.channels.ifPresent { this.channels = it }
             }

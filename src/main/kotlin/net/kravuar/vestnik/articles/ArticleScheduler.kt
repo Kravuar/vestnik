@@ -31,7 +31,7 @@ internal class ArticleScheduler(
                     LOG.info("Прекращён polling источника $source для перезапуска")
                 }
             }
-            tasksBySource[name] = scheduler.scheduleWithFixedDelay({
+            tasksBySource[name] = scheduler.scheduleAtFixedRate({
                 articlesFacade.fetchAndStoreLatestNews(name, scheduleDelay)
             }, scheduleDelay)
             LOG.info("Запущен polling источника $this")

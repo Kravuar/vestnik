@@ -71,7 +71,7 @@ internal open class TelegramPublisher(
                             ChannelsFacade.Media.Type.VIDEO -> {
                                 telegramBot.sendVideo(
                                     chatId = ChatId(RawChatId(channel.id)),
-                                    text = processedArticle.content.escapeHTML(),
+                                    text = processedArticle.content.escapeHtmlExcept(),
                                     parseMode = HTML,
                                     video = file
                                 )
