@@ -1,15 +1,11 @@
 package net.kravuar.vestnik.source
 
-import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
-import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.ManyToMany
 import jakarta.validation.constraints.NotBlank
-import net.kravuar.vestnik.channels.Channel
 import java.time.Duration
 
 @Entity
@@ -24,8 +20,6 @@ class Source(
     var scheduleDelay: Duration,
     @Column
     var contentXPath: String? = null,
-    @ManyToMany(fetch = FetchType.EAGER, cascade = [CascadeType.PERSIST, CascadeType.MERGE])
-    var channels: MutableSet<Channel> = HashSet(),
     @Column(nullable = false)
     var deleted: Boolean = false,
     @Column

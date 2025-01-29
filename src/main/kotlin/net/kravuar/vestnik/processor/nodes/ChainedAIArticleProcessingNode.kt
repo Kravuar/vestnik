@@ -7,13 +7,11 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Lob
-import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToOne
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
-import net.kravuar.vestnik.source.Source
 
 interface AIArticleProcessingNode {
     var model: String
@@ -23,11 +21,9 @@ interface AIArticleProcessingNode {
 
 @Entity
 class ChainedAIArticleProcessingNode(
-    @ManyToOne(optional = true)
-    var source: Source? = null,
     @Column(nullable = false)
     @get:NotBlank
-    @get:Size(min=1, max = 16)
+    @get:Size(min = 1, max = 16)
     var mode: String,
     @Column(nullable = false)
     @get:NotBlank
@@ -49,6 +45,6 @@ class ChainedAIArticleProcessingNode(
     val id: Long? = null,
 ) : AIArticleProcessingNode {
     override fun toString(): String {
-        return "AIProcessingNode(id=$id, mode=$mode, ${source?.let { "source=${it.name}," } ?: ","} model='$model', temperature=$temperature, prompt='$prompt', parent=${parent?.id})"
+        return "AIProcessingNode(id=$id, mode=$mode, model='$model', temperature=$temperature, prompt='$prompt', parent=${parent?.id})"
     }
 }

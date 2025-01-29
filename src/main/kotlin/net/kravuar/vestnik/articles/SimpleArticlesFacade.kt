@@ -27,11 +27,14 @@ internal open class SimpleArticlesFacade(
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
         return sourcesFacade.fetchLatestNews(sourceName, delta).map {
             itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
-        }.also {
-            articlesRepository.saveAll(it).also { savedArticles ->
-                if (savedArticles.isNotEmpty()) {
-                    LOG.info("Сохранены новые статьи: $savedArticles")
+        }.mapNotNull { article ->
+            if (!articlesRepository.existsByUrl(article.url)) {
+                articlesRepository.save(article).also {
+                    LOG.info("Сохранена новая статья: $article")
                 }
+            } else {
+                LOG.info("Статья уже существовала: $article")
+                null
             }
         }
     }

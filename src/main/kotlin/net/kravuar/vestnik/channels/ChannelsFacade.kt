@@ -3,7 +3,6 @@ package net.kravuar.vestnik.channels
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.post.Post
 import net.kravuar.vestnik.processor.ProcessedArticle
-import net.kravuar.vestnik.source.Source
 import java.util.Optional
 
 interface ChannelsFacade {
@@ -11,7 +10,6 @@ interface ChannelsFacade {
         var id: Optional<Long> = Optional.empty(),
         var name: Optional<String> = Optional.empty(),
         var platform: Optional<ChannelPlatform> = Optional.empty(),
-        var sources: Optional<MutableSet<Source>> = Optional.empty(),
     )
 
     data class Media(
@@ -32,13 +30,8 @@ interface ChannelsFacade {
     /**
      * Find page of non deleted
      */
-    fun getChannels(source: Source? = null, page: Int): Page<Channel>
-
-    /**
-     * Find page including deleted
-     */
-    fun getAllChannels(source: Source? = null, page: Int): Page<Channel>
-
+    fun getChannels(page: Int): Page<Channel>
+    fun getChannel(id: Long): Channel
     fun getChannelByName(name: String): Channel
 
     fun addChannel(input: ChannelInput): Channel

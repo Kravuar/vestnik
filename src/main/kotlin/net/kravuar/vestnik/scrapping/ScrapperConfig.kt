@@ -15,4 +15,13 @@ internal class ScrapperConfig {
         token,
         zone,
     )
+
+    @Bean
+    fun scrappingFacade(
+        scrapper: Scrapper,
+        scrapInfoRepository: ScrapInfoRepository
+    ): ScrappingFacade = SimpleScrappingFacade(
+        scrapper,
+        scrapInfoRepository
+    )
 }

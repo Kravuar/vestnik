@@ -89,15 +89,10 @@ internal open class SimpleSourcesFacade(
             ).apply {
                 source.contentXPath.ifPresent { this.contentXPath = it }
                 source.suspended.ifPresent { this.suspended = it }
-                source.channels.ifPresent { this.channels = it }
             }
         ).also {
             LOG.info(
-                "Добавлен новый источник: $it" + if (source.channels.isPresent) {
-                    ", каналы: ${it.channels.joinToString { channel -> channel.name }}"
-                } else {
-                    ""
-                }
+                "Добавлен новый источник: $it"
             )
         }
     }
@@ -113,9 +108,8 @@ internal open class SimpleSourcesFacade(
                 input.scheduleDelay.ifPresent { this.scheduleDelay = it }
                 input.contentXPath.ifPresent { this.contentXPath = it }
                 input.suspended.ifPresent { this.suspended = it }
-                input.channels.ifPresent { this.channels = it }
             }.also {
-                LOG.info("Обновлён источник $sourceName: $it")
+                LOG.info("Обновлён источник $it")
             }
     }
 
@@ -123,7 +117,7 @@ internal open class SimpleSourcesFacade(
     override fun deleteSource(sourceName: String): Boolean {
         LOG.info("Удаление источника $sourceName")
         return sourcesRepository.deleteByName(sourceName).also {
-            LOG.info("Удалён источник $sourceName: $it")
+            LOG.info("Удалён источник $it")
         } > 0
     }
 

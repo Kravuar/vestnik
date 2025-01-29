@@ -6,6 +6,7 @@ import net.kravuar.vestnik.articles.ArticlesFacade
 import net.kravuar.vestnik.channels.ChannelsFacade
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
+import net.kravuar.vestnik.scrapping.ScrappingFacade
 import net.kravuar.vestnik.source.SourcesFacade
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -29,6 +30,7 @@ internal class AssistantConfiguration {
         sourcesFacade: SourcesFacade,
         channelsFacade: ChannelsFacade,
         articlesFacade: ArticlesFacade,
+        scrappingFacade: ScrappingFacade,
         processedArticlesFacade: ProcessedArticlesFacade,
         aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade
     ): TelegramAssistantFacade = TelegramAssistantFacade(
@@ -40,6 +42,7 @@ internal class AssistantConfiguration {
         sourcesFacade,
         channelsFacade,
         articlesFacade,
+        scrappingFacade,
         processedArticlesFacade,
         aiArticleProcessingNodesFacade
     )

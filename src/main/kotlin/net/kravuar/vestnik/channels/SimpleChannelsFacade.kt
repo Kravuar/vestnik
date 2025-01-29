@@ -5,7 +5,6 @@ import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.post.PostsFacade
 import net.kravuar.vestnik.processor.ProcessedArticle
-import net.kravuar.vestnik.source.Source
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import kotlin.concurrent.withLock
@@ -17,9 +16,8 @@ internal open class SimpleChannelsFacade(
 ) : ChannelsFacade {
     private val locks = Striped.lazyWeakLock(7)
 
-    override fun getChannels(source: Source?, page: Int): Page<Channel> {
+    override fun getChannels(page: Int): Page<Channel> {
         return channelRepository.findChannels(
-            source,
             PageRequest.of(
                 page - 1,
                 Page.DEFAULT_PAGE_SIZE
@@ -32,19 +30,10 @@ internal open class SimpleChannelsFacade(
         }
     }
 
-    override fun getAllChannels(source: Source?, page: Int): Page<Channel> {
-        return channelRepository.findAllChannels(
-            source,
-            PageRequest.of(
-                page - 1,
-                Page.DEFAULT_PAGE_SIZE
-            )
-        ).let {
-            Page(
-                it.totalPages,
-                it.content
-            )
-        }
+    override fun getChannel(id: Long): Channel {
+        return channelRepository
+            .findById(id)
+            .orElseThrow { IllegalArgumentException("Канал $id не найден") }
     }
 
     override fun getChannelByName(name: String): Channel {
@@ -61,9 +50,8 @@ internal open class SimpleChannelsFacade(
                 input.id.orElseThrow { IllegalArgumentException("При создании канала id обязательно") },
                 input.name.orElseThrow { IllegalArgumentException("При создании канала имя обязательно") },
                 input.platform.orElse(ChannelPlatform.TG),
-            ).apply {
-                input.sources.ifPresent { sources = it }
-            }).also {
+            )
+        ).also {
             LOG.info("Добавлен канал: $it")
         }
     }

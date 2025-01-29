@@ -85,6 +85,7 @@ import net.kravuar.vestnik.post.Post
 import net.kravuar.vestnik.processor.ProcessedArticle
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
+import net.kravuar.vestnik.scrapping.ScrappingFacade
 import net.kravuar.vestnik.source.SourcesFacade
 import org.apache.logging.log4j.LogManager
 import java.time.OffsetDateTime
@@ -125,30 +126,18 @@ private enum class Command(
     ADD_SOURCE("add_source", "Добавить источник", emptyList()),
     DELETE_SOURCE("delete_source", "Удалить источник по имени", listOf(Arg("name", "Имя источника"))),
     UPDATE_SOURCE("update_source", "Обновить источник", emptyList()),
-    SHOW_CHANNELS("show_channels", "Показать список каналов", listOf(Arg("source", "Имя источника", true))),
+    SHOW_SCRAP_INFOS("show_scrap_infos", "Показать список конфигураций парсинга", emptyList()),
+    ADD_SCRAP_INFO("add_scrap_info", "Добавить конфигурацию парсинга", emptyList()),
+    DELETE_SCRAP_INFO("delete_scrap_info", "Удалить конфигурацию парсинга", listOf(Arg("id", "ID конфигурации"))),
+    UPDATE_SCRAP_INFO("update_scrap_info", "Обновить конфигурацию парсинга", emptyList()),
+    SHOW_CHANNELS("show_channels", "Показать список каналов", emptyList()),
     ADD_CHANNEL("add_channel", "Добавить канал", emptyList()),
     DELETE_CHANNEL("delete_channel", "Удалить канал по имени", listOf(Arg("name", "Имя канала"))),
-    SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", listOf(Arg("source", "Имя источника", true))),
-    SHOW_MODES(
-        "show_modes",
-        "Показать режимы обработки статей для источника",
-        listOf(Arg("source", "Имя источника", true))
-    ),
-    SHOW_CHAIN(
-        "show_chain",
-        "Показать конкретную цепочку",
-        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-    ),
-    ADD_CHAIN(
-        "add_chain",
-        "Добавить цепочку обработки статьи для конкретного источника",
-        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-    ),
-    DELETE_CHAIN(
-        "delete_chain",
-        "Удалить цепочку обработки статьи",
-        listOf(Arg("source", "Имя источника", true), Arg("mode", "Имя режима"))
-    ),
+    SHOW_CHAINS("show_chains", "Показать цепочки обработки статей", emptyList()),
+    SHOW_MODES("show_modes", "Показать режимы обработки статей", emptyList()),
+    SHOW_CHAIN("show_chain", "Показать конкретную цепочку", listOf(Arg("mode", "Имя режима"))),
+    ADD_CHAIN("add_chain", "Добавить цепочку обработки статьи", listOf(Arg("mode", "Имя режима"))),
+    DELETE_CHAIN("delete_chain", "Удалить цепочку обработки статьи", listOf(Arg("mode", "Имя режима"))),
     ADD_NODE("add_node", "Добавить узел после указанного узла", emptyList()),
     DELETE_NODE("delete_node", "Удалить узел обработки статьи", listOf(Arg("id", "ID узла"))),
     UPDATE_NODE("update_node", "Обновить узел обработки статьи", emptyList());
@@ -178,6 +167,7 @@ internal class TelegramAssistantFacade(
     private val sourcesFacade: SourcesFacade,
     private val channelsFacade: ChannelsFacade,
     private val articlesFacade: ArticlesFacade,
+    private val scrappingFacade: ScrappingFacade,
     private val processedArticlesFacade: ProcessedArticlesFacade,
     private val aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade
 ) : AssistantFacade {
@@ -198,7 +188,7 @@ internal class TelegramAssistantFacade(
     override fun notifyNewArticle(article: Article) {
         LOG.info("Оповещение о новой статье $article")
 
-        val modes = processedArticlesFacade.getModes(article, 1)
+        val modes = processedArticlesFacade.getModes(1)
         runBlocking {
             bot.send(
                 chatId = adminChannel,
@@ -297,7 +287,7 @@ internal class TelegramAssistantFacade(
             ) { paginationCallback ->
                 val (articleId, page) = getArticleModesData(paginationCallback.data)
                 val article = articlesFacade.getArticle(articleId)
-                val modes = processedArticlesFacade.getModes(article, page)
+                val modes = processedArticlesFacade.getModes(page)
 
                 edit(
                     message = paginationCallback.message.withContent()
@@ -421,7 +411,6 @@ internal class TelegramAssistantFacade(
                                 "Id" to source.id,
                                 "Периодичность" to source.scheduleDelay.toKotlinDuration().toString(),
                                 "XPATH к контенту" to source.contentXPath,
-                                "Целевые Каналы" to source.channels.joinToString { channel -> channel.chatLink() },
                                 "Приостановлен" to if (source.suspended == true) {
                                     "да"
                                 } else {
@@ -503,7 +492,6 @@ internal class TelegramAssistantFacade(
                                     "url (u)" to "URL",
                                     "schedule (sc)" to "Периодичность (в минутах)",
                                     "xpath (x)" to "XPATH к контенту",
-                                    "channels (c)" to "Целевые каналы (имена через запятую)",
                                     "suspended (s)" to "Приостановлен",
                                 )
                             ),
@@ -522,11 +510,6 @@ internal class TelegramAssistantFacade(
                                 }
                                 input.tryGet("xpath", "x")?.let {
                                     contentXPath = Optional.of(it)
-                                }
-                                input.tryGet("channels", "c")?.let {
-                                    channels = Optional.of(it.split(",").map { name ->
-                                        channelsFacade.getChannelByName(name.trim())
-                                    }.toMutableSet())
                                 }
                                 input.tryGet("suspended", "s")?.toBoolean()?.let {
                                     suspended = Optional.of(it)
@@ -563,22 +546,149 @@ internal class TelegramAssistantFacade(
                 )
             }
 
+            onCommand(
+                command = Command.SHOW_SCRAP_INFOS.commandName,
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
+            ) { userMessage ->
+                val pageSupplier = { page: Int ->
+                    val scrapInfos = scrappingFacade.getScrapInfos(page)
+                    val scrapInfosAsString = writeForMessage(scrapInfos.content.map {
+                        mapOf(
+                            "Id" to it.id,
+                            "Шаблон URL" to it.urlPattern,
+                            "XPath" to it.contentXPath,
+                        )
+                    })
+
+                    MessageWithReplyMarkup(
+                        "Список конфигураций парсинга" + if (scrapInfos.content.isNotEmpty()) {
+                            "\n" + scrapInfosAsString
+                        } else {
+                            " пуст"
+                        },
+                        simplePaginationMarkup(page, scrapInfos.totalPages)
+                    )
+                }
+                handleCallbackCommand(
+                    Command.SHOW_SCRAP_INFOS,
+                    null,
+                    { PAGE_REGEX.matches(it) },
+                    { _ -> pageSupplier(1) },
+                    userMessage,
+                    { _, message, callback ->
+                        val page = pageSupplier(callback.toInt())
+                        edit(
+                            message = message,
+                            text = page.message,
+                            markup = page.replyMarkup
+                        )
+                    }
+                )
+            }
+
+            onCommand(
+                command = Command.ADD_SCRAP_INFO.commandName,
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
+            ) { userMessage ->
+                handleFormCommand(
+                    Command.ADD_SCRAP_INFO,
+                    userMessage,
+                    "Введите следующие данные для добавления конфигурации парсинга:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "urlPattern (up)" to "Шаблон URL",
+                                    "xpath (x)" to "XPATH к контенту",
+                                )
+                            ),
+                    { input ->
+                        scrappingFacade.addScrapInfo(ScrappingFacade.ScrapInfoInput().apply {
+                            input.tryGet("urlPattern", "up")?.let {
+                                urlPattern = Optional.of(it)
+                            }
+                            input.tryGet("xpath", "x")?.let {
+                                contentXPath = Optional.of(it)
+                            }
+                        })
+                    },
+                    { _, scrapInfo -> "Конфигурация парсинга ${scrapInfo.id} добавлена" },
+                    { _ -> "Не удалось добавить конфигурацию парсинга" }
+                )
+            }
+
+            onCommand(
+                command = Command.UPDATE_SCRAP_INFO.commandName,
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
+            ) { userMessage ->
+                handleFormCommand(
+                    Command.UPDATE_SCRAP_INFO,
+                    userMessage,
+                    "Введите необходимые данные для обновления конфигурации парсинга:" +
+                            "\n" +
+                            writeForMessage(
+                                mapOf(
+                                    "id" to "ID обновляемой конфигурации",
+                                    "urlPattern (up)" to "Шаблон URL",
+                                    "xpath (x)" to "XPATH к контенту",
+                                )
+                            ),
+                    { input ->
+                        scrappingFacade.updateScrapInfo(
+                            requireNotNull(input["id"]) { "Не указано id обновляемой конфигурации парсинга" }.toLong(),
+                            ScrappingFacade.ScrapInfoInput().apply {
+                                input.tryGet("urlPattern", "up")?.let {
+                                    urlPattern = Optional.of(it)
+                                }
+                                input.tryGet("xpath", "x")?.let {
+                                    contentXPath = Optional.of(it)
+                                }
+                            })
+                    },
+                    { _, scrapInfo -> "Конфигурация парсинга ${scrapInfo.id} обновлёна" },
+                    { _ -> "Не удалось обновить конфигурацию парсинга" }
+                )
+            }
+
+            onCommandWithArgs(
+                command = Command.DELETE_SCRAP_INFO.commandName,
+                initialFilter = adminMessageFilter,
+                markerFactory = null,
+            ) { userMessage, args ->
+                handleArgumentCommand(
+                    Command.DELETE_SCRAP_INFO,
+                    userMessage,
+                    args,
+                    { argsByName ->
+                        scrappingFacade.deleteScrapInfo(
+                            requireNotNull(argsByName["id"]) { "ID конфигурации парсинга является обязательным" }.toLong()
+                        )
+                    },
+                    { argsByName, deleted ->
+                        if (deleted) {
+                            "Конфигурация парсинга ${argsByName["id"]!!} удалена"
+                        } else {
+                            "Не найдено конфигурации парсинга ${argsByName["id"]!!} для удаления"
+                        }
+                    },
+                    { _ -> "Не удалось удалить конфигурацию парсинга" }
+                )
+            }
+
             onCommandWithArgs(
                 command = Command.SHOW_CHANNELS.commandName,
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                val pageSupplier = { source: String?, page: Int ->
-                    val channels = channelsFacade.getChannels(
-                        source?.let { sourcesFacade.getSourceByName(it) },
-                        page
-                    )
+                val pageSupplier = { page: Int ->
+                    val channels = channelsFacade.getChannels(page)
                     val channelsAsString = writeForMessage(channels.content.map {
                         mapOf(
                             "Id" to it.id,
                             "Имя" to it.name,
                             "Платформа" to it.platform,
-                            "Источники" to it.sources.joinToString(", ") { source -> source.name },
                             "Удалён" to it.deleted,
                         )
                     })
@@ -596,10 +706,10 @@ internal class TelegramAssistantFacade(
                     Command.SHOW_CHANNELS,
                     args,
                     { PAGE_REGEX.matches(it) },
-                    { argsByName -> pageSupplier(argsByName["source"], 1) },
+                    { _ -> pageSupplier(1) },
                     userMessage,
-                    { argsByName, message, callback ->
-                        val page = pageSupplier(argsByName["source"], callback.toInt())
+                    { _, message, callback ->
+                        val page = pageSupplier(callback.toInt())
                         edit(
                             message = message,
                             text = page.message,
@@ -622,8 +732,7 @@ internal class TelegramAssistantFacade(
                             writeForMessage(
                                 mapOf(
                                     "id (i)" to "ID канала",
-                                    "name (n)" to "Имя канала",
-                                    "sources (s)" to "Источники (имена через запятую)",
+                                    "name (n)" to "Имя канала"
                                 )
                             ),
                     @Transactional { input ->
@@ -636,11 +745,6 @@ internal class TelegramAssistantFacade(
                             }
                             input.tryGet("platform", "p")?.let {
                                 platform = Optional.of(ChannelPlatform.valueOf(it.uppercase()))
-                            }
-                            input.tryGet("sources", "s")?.let {
-                                sources = Optional.of(it.split(",").map { name ->
-                                    sourcesFacade.getSourceByName(name.trim())
-                                }.toMutableSet())
                             }
                         })
                     },
@@ -679,18 +783,13 @@ internal class TelegramAssistantFacade(
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                val pageSupplier = { source: String?, page: Int ->
-                    val chains = aiArticleProcessingNodesFacade.getChains(
-                        source?.let { sourcesFacade.getSourceByName(source) },
-                        page
-                    )
+                val pageSupplier = { page: Int ->
+                    val chains = aiArticleProcessingNodesFacade.getChains(page)
                     val chainsAsString = writeForMessage(chains.content.map {
                         mutableMapOf(
                             "Id Корня" to it.id,
                             "Режим" to it.mode,
-                        ).also { map ->
-                            it.source?.run { map["Источник"] = name }
-                        }
+                        )
                     })
 
                     MessageWithReplyMarkup(
@@ -706,10 +805,10 @@ internal class TelegramAssistantFacade(
                     Command.SHOW_CHAINS,
                     args,
                     { PAGE_REGEX.matches(it) },
-                    { argsByName -> pageSupplier(argsByName["source"], 1) },
+                    { _ -> pageSupplier(1) },
                     userMessage,
-                    { argsByName, message, callback ->
-                        val page = pageSupplier(argsByName["source"], callback.toInt())
+                    { _, message, callback ->
+                        val page = pageSupplier(callback.toInt())
                         edit(
                             message = message,
                             text = page.message,
@@ -724,18 +823,10 @@ internal class TelegramAssistantFacade(
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                val pageSupplier = { source: String?, page: Int ->
-                    val modes = aiArticleProcessingNodesFacade.getModes(
-                        source?.let { sourcesFacade.getSourceByName(source) },
-                        page
-                    )
+                val pageSupplier = { page: Int ->
+                    val modes = aiArticleProcessingNodesFacade.getModes(page)
                     MessageWithReplyMarkup(
-                        "Список режимов" +
-                                if (source != null) {
-                                    "для источника $source:"
-                                } else {
-                                    ":"
-                                } + if (modes.content.isNotEmpty()) {
+                        "Список режимов: " + if (modes.content.isNotEmpty()) {
                             modes.content.joinToString()
                         } else {
                             " пуст"
@@ -747,15 +838,10 @@ internal class TelegramAssistantFacade(
                     Command.SHOW_MODES,
                     args,
                     { PAGE_REGEX.matches(it) },
-                    { argsByName ->
-                        pageSupplier(
-                            argsByName["source"],
-                            1
-                        )
-                    },
+                    { _ -> pageSupplier(1) },
                     userMessage,
-                    { argsByName, message, callback ->
-                        val page = pageSupplier(argsByName["source"], callback.toInt())
+                    { _, message, callback ->
+                        val page = pageSupplier(callback.toInt())
                         edit(
                             message = message,
                             text = page.message,
@@ -770,12 +856,8 @@ internal class TelegramAssistantFacade(
                 initialFilter = adminMessageFilter,
                 markerFactory = null,
             ) { userMessage, args ->
-                val pageSupplier = { source: String?, mode: String, page: Int ->
-                    val chain = aiArticleProcessingNodesFacade.getChain(
-                        source?.let { sourcesFacade.getSourceByName(it) },
-                        mode,
-                        page
-                    )
+                val pageSupplier = { mode: String, page: Int ->
+                    val chain = aiArticleProcessingNodesFacade.getChain(mode, page)
                     val chainAsString = writeForMessage(chain.content.map {
                         mapOf(
                             "Id узла" to it.id,
@@ -786,9 +868,7 @@ internal class TelegramAssistantFacade(
                         )
                     })
                     MessageWithReplyMarkup(
-                        "Цепочка для режима $mode" + (source?.let {
-                            ", источника $it:"
-                        } ?: ":") +
+                        "Цепочка для режима $mode" +
                                 "\n" +
                                 chainAsString,
                         simplePaginationMarkup(page, chain.totalPages)
@@ -800,7 +880,6 @@ internal class TelegramAssistantFacade(
                     { PAGE_REGEX.matches(it) },
                     { argsByName ->
                         pageSupplier(
-                            argsByName["source"],
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                             1
                         )
@@ -808,7 +887,6 @@ internal class TelegramAssistantFacade(
                     userMessage,
                     { argsByName, message, callback ->
                         val page = pageSupplier(
-                            argsByName["source"],
                             argsByName["mode"]!!,
                             callback.toInt()
                         )
@@ -832,14 +910,11 @@ internal class TelegramAssistantFacade(
                     args,
                     { argsByName ->
                         aiArticleProcessingNodesFacade.createChain(
-                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
                     },
                     { argsByName, _ ->
-                        "Создана цепочка обработки источника с именем режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
-                            ", источника $it"
-                        } ?: "")
+                        "Создана цепочка обработки источника с именем режима ${argsByName["mode"]!!}"
                     },
                     { _ -> "Не удалось добавить цепочку обработки новостей" }
                 )
@@ -856,14 +931,11 @@ internal class TelegramAssistantFacade(
                     args,
                     { argsByName ->
                         aiArticleProcessingNodesFacade.deleteChain(
-                            argsByName["source"]?.let { sourcesFacade.getSourceByName(it) },
                             requireNotNull(argsByName["mode"]) { "Режим обработки является обязательным" },
                         )
                     },
                     { argsByName, _ ->
-                        "Удалена цепочка обработки с именем режима ${argsByName["mode"]!!}" + (argsByName["source"]?.let {
-                            ", источника $it"
-                        } ?: "")
+                        "Удалена цепочка обработки с именем режима ${argsByName["mode"]!!}"
                     },
                     { _ -> "Не удалось удалить цепочку обработки новостей" }
                 )
@@ -902,7 +974,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} добавлен в цепочку для режима ${node.mode}" + (node.source?.let { ", источника ${it.name}" } ?: "") },
+                    { _, node -> "Узел ${node.id} добавлен в цепочку для режима ${node.mode}" },
                     { "Не удалось добавить узел" },
                 )
             }
@@ -965,7 +1037,7 @@ internal class TelegramAssistantFacade(
                                 }
                             })
                     },
-                    { _, node -> "Узел ${node.id} обновлён в цепочке режима ${node.mode}" + (node.source?.let { ", источника ${it.name}" } ?: "") },
+                    { _, node -> "Узел ${node.id} обновлён в цепочке режима ${node.mode}" },
                     { "Не удалось обновить узел" },
                 )
             }
@@ -1222,10 +1294,7 @@ internal class TelegramAssistantFacade(
     ) {
         // Retrieving channels
         var page = 1
-        var currentChannelsPage = channelsFacade.getChannels(
-            processedArticle.article.source,
-            page
-        )
+        var currentChannelsPage = channelsFacade.getChannels(page)
         val selected = mutableSetOf<Long>()
 
         // Edit message to contain processed article
@@ -1266,7 +1335,7 @@ internal class TelegramAssistantFacade(
                     // Change page of channels
                     PAGE_REGEX.matches(processedArticleCallback.data) -> {
                         page = processedArticleCallback.data.toInt()
-                        currentChannelsPage = channelsFacade.getChannels(processedArticle.article.source, page)
+                        currentChannelsPage = channelsFacade.getChannels(page)
                         editChannelsMarkup()
                     }
                     // Select channel
@@ -1283,8 +1352,8 @@ internal class TelegramAssistantFacade(
                     processedArticleCallback.data == postCallbackData() -> {
                         with(createSubContext()) {
                             launchSafelyWithoutExceptions {
-                                val selectedChannels = processedArticle.article.source.channels.filter {
-                                    it.id in selected
+                                val selectedChannels = selected.map {
+                                    channelsFacade.getChannel(it)
                                 }
                                 if (selectedChannels.isEmpty()) {
                                     throw AssistantActionException(

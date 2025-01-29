@@ -19,7 +19,7 @@ class Article(
     @Column
     @Lob
     var description: String? = null,
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     var url: String,
     @Column(nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now(),

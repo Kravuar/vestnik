@@ -6,4 +6,6 @@ import org.springframework.stereotype.Repository
 
 @Repository
 @Transactional
-internal interface ArticlesRepository: JpaRepository<Article, Long>
+internal interface ArticlesRepository: JpaRepository<Article, Long> {
+    fun existsByUrl(url: String): Boolean
+}
