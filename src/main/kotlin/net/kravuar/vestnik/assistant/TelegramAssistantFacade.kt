@@ -1066,8 +1066,8 @@ internal class TelegramAssistantFacade(
         fun writeForMessage(): String {
             return writeForMessage(
                 mutableMapOf(
-                    "Первичный канал" to primaryChannel.chatLink(),
-                    "Медиа файлы" to mediaList.size
+                    "⭐ Первичный канал" to primaryChannel.chatLink(),
+                    "\uD83D\uDDBC\uFE0F Медиа файлы" to mediaList.size
                 ).apply {
                     if (forwardChannels.isNotEmpty()) {
                         put("Forward каналы", forwardChannels.joinToString { it.chatLink() })
@@ -1668,10 +1668,10 @@ internal class TelegramAssistantFacade(
                     "\n" +
                     writeForMessage(
                         mutableMapOf(
-                            "Первичный канал" to publishingResult.primaryPost.messageLink(),
+                            "⭐ Первичный канал" to publishingResult.primaryPost.messageLink(),
                         ).apply {
                             if (publishingResult.forwardedPosts.isNotEmpty()) {
-                                put("Forward каналы", publishingResult.forwardedPosts.joinToString {
+                                put("↪\uFE0F Forward каналы", publishingResult.forwardedPosts.joinToString {
                                     it.messageLink()
                                 })
                             }
