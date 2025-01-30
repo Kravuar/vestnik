@@ -11,7 +11,6 @@ interface SourcesFacade {
         var name: Optional<String> = Optional.empty(),
         var url: Optional<String> = Optional.empty(),
         var scheduleDelay: Optional<Duration> = Optional.empty(),
-        var contentXPath: Optional<String> = Optional.empty(),
         var channels: Optional<MutableSet<Channel>> = Optional.empty(),
         var suspended: Optional<Boolean> = Optional.empty(),
     )

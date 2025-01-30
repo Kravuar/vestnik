@@ -1,7 +1,9 @@
 package net.kravuar.vestnik.assistant
 
 import dev.inmo.tgbotapi.bot.TelegramBot
-import dev.inmo.tgbotapi.extensions.api.telegramBot
+import dev.inmo.tgbotapi.bot.ktor.telegramBot
+import dev.inmo.tgbotapi.bot.settings.limiters.PowLimiter
+import dev.inmo.tgbotapi.utils.TelegramAPIUrlsKeeper
 import net.kravuar.vestnik.articles.ArticlesFacade
 import net.kravuar.vestnik.channels.ChannelsFacade
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
@@ -18,7 +20,9 @@ internal class AssistantConfiguration {
     @Bean
     fun telegramApiBot(
         @Value("\${telegram.bot.token}") token: String,
-    ): TelegramBot = telegramBot(token)
+    ): TelegramBot = telegramBot(TelegramAPIUrlsKeeper(token)) {
+        requestsLimiter = PowLimiter()
+    }
 
     @Bean
     fun assistantFacade(

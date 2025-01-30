@@ -3,7 +3,7 @@ package net.kravuar.vestnik.processor
 import net.kravuar.vestnik.processor.nodes.AIArticleProcessingNodesFacade
 import net.kravuar.vestnik.processor.nodes.ChainedAiArticleProcessingNodesRepository
 import net.kravuar.vestnik.processor.nodes.SimpleAIArticleProcessingNodesFacade
-import net.kravuar.vestnik.scrapping.Scrapper
+import net.kravuar.vestnik.scrapping.ScrappingFacade
 import net.kravuar.vestnik.source.SourcesFacade
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.context.annotation.Bean
@@ -26,11 +26,11 @@ internal class ArticleProcessingConfig {
         chatModel: ChatModel,
         aiArticleProcessingNodesFacade: AIArticleProcessingNodesFacade,
         processedArticleRepository: ProcessedArticleRepository,
-        scrapper: Scrapper
+        scrappingFacade: ScrappingFacade
     ): ProcessedArticlesFacade = AIProcessingArticlesFacade(
         chatModel,
         aiArticleProcessingNodesFacade,
         processedArticleRepository,
-        scrapper
+        scrappingFacade
     )
 }

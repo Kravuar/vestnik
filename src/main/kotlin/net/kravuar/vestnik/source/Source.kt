@@ -18,8 +18,6 @@ class Source(
     var url: String,
     @Column(nullable = false)
     var scheduleDelay: Duration,
-    @Column
-    var contentXPath: String? = null,
     @Column(nullable = false)
     var deleted: Boolean = false,
     @Column
@@ -29,6 +27,6 @@ class Source(
     var id: Long? = null
 ) {
     override fun toString(): String {
-        return "Source(id=$id, name='$name', scheduleDelay=$scheduleDelay, url='$url', contentXPath='$contentXPath', deleted=$deleted, suspended=$suspended)"
+        return "Source(id=$id, name='$name', scheduleDelay=$scheduleDelay, url='$url', deleted=$deleted, suspended=$suspended)"
     }
 }

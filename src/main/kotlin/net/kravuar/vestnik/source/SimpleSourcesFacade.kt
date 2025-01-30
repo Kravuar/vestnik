@@ -87,7 +87,6 @@ internal open class SimpleSourcesFacade(
                 source.url.orElseThrow { IllegalArgumentException("URL обязателен") },
                 source.scheduleDelay.orElseThrow { IllegalArgumentException("Периодичность источника обязательна") },
             ).apply {
-                source.contentXPath.ifPresent { this.contentXPath = it }
                 source.suspended.ifPresent { this.suspended = it }
             }
         ).also {
@@ -106,7 +105,6 @@ internal open class SimpleSourcesFacade(
                 input.url.ifPresent { this.url = it }
                 input.name.ifPresent { this.name = it }
                 input.scheduleDelay.ifPresent { this.scheduleDelay = it }
-                input.contentXPath.ifPresent { this.contentXPath = it }
                 input.suspended.ifPresent { this.suspended = it }
             }.also {
                 LOG.info("Обновлён источник $it")
