@@ -1,40 +1,13 @@
 package net.kravuar.vestnik.source
 
-import com.apptasticsoftware.rssreader.Item
-import com.apptasticsoftware.rssreader.RssReader
-import com.apptasticsoftware.rssreader.util.ItemComparator
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
-import java.time.Duration
-import java.time.ZonedDateTime
 
 internal open class SimpleSourcesFacade(
-    private val sourcesRepository: SourcesRepository
+    private val sourcesRepository: SourcesRepository,
 ) : SourcesFacade {
-
-    override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
-        with(getSourceByName(sourceName)) {
-            if (suspended == true) {
-                LOG.info("Источник $sourceName приостановлен, fetch не будет произведён")
-                return emptyList()
-            }
-            return RssReader()
-                .read(this.url)
-                .sorted(ItemComparator.oldestPublishedItemFirst())
-                .filter { article -> article.pubDateZonedDateTime.map { it > ZonedDateTime.now() - delta }.orElse(false) }
-                .toList().also {
-                    LOG.info(
-                        if (it.isNotEmpty()) {
-                            "Получены новости из источника $sourceName: " + it.joinToString { article -> "${article.link} | ${article.title}" }
-                        } else {
-                            "Новостей из источника $sourceName не найдено"
-                        }
-                    )
-                }
-        }
-    }
 
     override fun getSources(): List<Source> {
         return sourcesRepository.findAllByDeletedIsFalse()

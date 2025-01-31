@@ -9,10 +9,10 @@ import jakarta.validation.constraints.NotBlank
 
 @Entity
 class ScrapInfo(
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 4000)
     @get:NotBlank
     var urlPattern: String,
-    @Column
+    @Column(length = 4000)
     @get:NotBlank
     var contentXPath: String,
     @Id

@@ -1,6 +1,5 @@
 package net.kravuar.vestnik.source
 
-import com.apptasticsoftware.rssreader.Item
 import net.kravuar.vestnik.channels.Channel
 import net.kravuar.vestnik.commons.Page
 import java.time.Duration
@@ -14,8 +13,6 @@ interface SourcesFacade {
         var channels: Optional<MutableSet<Channel>> = Optional.empty(),
         var suspended: Optional<Boolean> = Optional.empty(),
     )
-
-    fun fetchLatestNews(sourceName: String, delta: Duration): List<Item>
 
     /**
      * Find all non deleted

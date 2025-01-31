@@ -2,8 +2,10 @@ package net.kravuar.vestnik.articles
 
 import net.kravuar.vestnik.commons.EntityEvent
 import net.kravuar.vestnik.commons.Page
+import net.kravuar.vestnik.source.Source
 import org.springframework.context.ApplicationEventPublisher
 import java.time.Duration
+import java.util.Optional
 
 internal class NotifyingArticlesFacade(
     private val eventPublisher: ApplicationEventPublisher,
@@ -29,13 +31,11 @@ internal class NotifyingArticlesFacade(
         return articlesFacade.getArticles(page)
     }
 
-    override fun getArticle(id: Long): Article {
-        return articlesFacade.getArticle(id)
+    override fun getLatestArticle(source: Source): Optional<Article> {
+        return articlesFacade.getLatestArticle(source)
     }
 
-    override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
-        return articlesFacade.updateArticle(id, input).also {
-            eventPublisher.publishEvent(EntityEvent.updated(this, it))
-        }
+    override fun getArticle(id: Long): Article {
+        return articlesFacade.getArticle(id)
     }
 }

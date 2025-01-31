@@ -1,19 +1,13 @@
 package net.kravuar.vestnik.source
 
-import com.apptasticsoftware.rssreader.Item
 import net.kravuar.vestnik.commons.EntityEvent
 import net.kravuar.vestnik.commons.Page
 import org.springframework.context.ApplicationEventPublisher
-import java.time.Duration
 
 internal class NotifyingSourcesFacade(
     private val eventPublisher: ApplicationEventPublisher,
     private val sourcesFacade: SourcesFacade
 ) : SourcesFacade {
-
-    override fun fetchLatestNews(sourceName: String, delta: Duration): List<Item> {
-        return sourcesFacade.fetchLatestNews(sourceName, delta)
-    }
 
     override fun getSources(): List<Source> {
         return sourcesFacade.getSources()

@@ -15,11 +15,10 @@ interface ArticlesFacade {
 
     fun getArticles(): List<Article>
     fun getArticles(page: Int): Page<Article>
+    fun getLatestArticle(source: Source): Optional<Article>
 
     fun getArticle(id: Long): Article
 
     fun fetchAndStoreLatestNews(delta: Duration): List<Article>
     fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article>
-
-    fun updateArticle(id: Long, input: ArticleInput): Article
 }

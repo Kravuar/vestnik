@@ -1,8 +1,9 @@
 package net.kravuar.vestnik.articles
 
 import com.apptasticsoftware.rssreader.Item
+import com.apptasticsoftware.rssreader.RssReader
+import com.apptasticsoftware.rssreader.util.ItemComparator
 import jakarta.transaction.Transactional
-import kotlinx.serialization.json.JsonNull.content
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
 import net.kravuar.vestnik.source.SourcesFacade
@@ -10,11 +11,52 @@ import org.apache.logging.log4j.LogManager
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import java.time.Duration
+import java.util.Optional
 
 internal open class SimpleArticlesFacade(
     private val articlesRepository: ArticlesRepository,
     private val sourcesFacade: SourcesFacade,
 ) : ArticlesFacade {
+
+    private fun fetchLatestNews(sourceName: String): List<Article> {
+        with(sourcesFacade.getSourceByName(sourceName)) {
+            if (suspended == true) {
+                LOG.info("Источник $sourceName приостановлен, fetch не будет произведён")
+                return emptyList()
+            }
+            return RssReader()
+                .read(this.url)
+                .sorted(ItemComparator.oldestPublishedItemFirst())
+                .toList()
+                .also {
+                    LOG.info("Получено новостей из источника $sourceName: ${it.size}")
+                }
+                .let { articles ->
+                    getLatestArticle(this).map { latestArticle ->
+                        // Drop all before latest
+                        val untilLatest = articles.dropWhile { it.guid.orElseThrow() != latestArticle.sourceGuid }
+                        if (untilLatest.isNotEmpty()) {
+                            // Drop latest as well
+                            untilLatest.drop(1)
+                        } else {
+                            // Latest article was not in that list, take all of them
+                            articles
+                        }
+                    }.orElse(articles)
+                }
+                .map {
+                    itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
+                }.also {
+                    LOG.info(
+                        if (it.isNotEmpty()) {
+                            "Отобрано по времени новостей из источника $sourceName: ${it.size}"
+                        } else {
+                            "Новостей из источника $sourceName не отобрано"
+                        }
+                    )
+                }
+        }
+    }
 
     @Transactional
     override fun fetchAndStoreLatestNews(delta: Duration): List<Article> {
@@ -25,10 +67,8 @@ internal open class SimpleArticlesFacade(
 
     @Transactional
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
-        return sourcesFacade.fetchLatestNews(sourceName, delta).map {
-            itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
-        }.mapNotNull { article ->
-            if (!articlesRepository.existsByUrl(article.url)) {
+        return fetchLatestNews(sourceName).mapNotNull { article ->
+            if (!articlesRepository.existsBySourceGuid(article.sourceGuid)) {
                 articlesRepository.save(article).also {
                     LOG.info("Сохранена новая статья: $article")
                 }
@@ -58,19 +98,12 @@ internal open class SimpleArticlesFacade(
         }
     }
 
-    override fun getArticle(id: Long): Article {
-        return articlesRepository.findById(id).orElseThrow { IllegalArgumentException("Новость с id=$id не найдена") }
+    override fun getLatestArticle(source: Source): Optional<Article> {
+        return articlesRepository.findTopBySourceOrderByCreatedAtDesc(source)
     }
 
-    @Transactional
-    override fun updateArticle(id: Long, input: ArticlesFacade.ArticleInput): Article {
-        return getArticle(id).apply {
-            input.title.ifPresent { title = it }
-            input.description.ifPresent { description = it }
-            input.url.ifPresent { url = it }
-        }.also {
-            LOG.info("Обновлена статья: $it")
-        }
+    override fun getArticle(id: Long): Article {
+        return articlesRepository.findById(id).orElseThrow { IllegalArgumentException("Новость с id=$id не найдена") }
     }
 
     companion object {
@@ -80,8 +113,10 @@ internal open class SimpleArticlesFacade(
             return Article(
                 source = source,
                 title = item.title.orElseThrow(),
+                sourceGuid = item.guid.orElseThrow(),
                 description = item.description.orElse(null),
                 url = item.link.orElseThrow(),
+                createdAt = item.pubDateZonedDateTime.orElseThrow().toOffsetDateTime()
             )
         }
     }

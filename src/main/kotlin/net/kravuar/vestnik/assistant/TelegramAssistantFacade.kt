@@ -187,9 +187,8 @@ internal class TelegramAssistantFacade(
     }
 
     override fun notifyNewArticle(article: Article) {
-        LOG.info("Оповещение о новой статье $article")
-
         val modes = processedArticlesFacade.getModes(1)
+        // TODO: RateLimiter
         runBlocking {
             bot.send(
                 chatId = adminChannel,
