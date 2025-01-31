@@ -19,6 +19,7 @@ internal class BrightDataScrapper(
                 .data("zone", zone)
                 .data("url", url)
                 .data("format", "raw")
+                .ignoreContentType(true)
                 .timeout(90.seconds.millisecondsInt)
                 .header("Authorization", "Bearer $token")
                 .post()
