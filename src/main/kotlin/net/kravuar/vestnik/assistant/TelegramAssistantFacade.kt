@@ -718,7 +718,7 @@ internal class TelegramAssistantFacade(
                             "\n" +
                             writeForMessage(
                                 mapOf(
-                                    "\uD83C\uDD94 id (i)" to "ID канала",
+                                    "\uD83C\uDD94 id" to "ID канала",
                                     "\uD83C\uDFF7\uFE0F name (n)" to "Имя канала"
                                 )
                             ),
@@ -727,7 +727,7 @@ internal class TelegramAssistantFacade(
                             input.tryGet("name", "n")?.let {
                                 name = Optional.of(it)
                             }
-                            input.tryGet("id", "i")?.let {
+                            input["id"]?.let {
                                 id = Optional.of(it.toLong())
                             }
                             input.tryGet("platform", "p")?.let {
@@ -949,10 +949,7 @@ internal class TelegramAssistantFacade(
                     { input ->
                         aiArticleProcessingNodesFacade.insertNode(
                             requireNotNull(
-                                input.tryGet(
-                                    "prevNode",
-                                    "pn"
-                                )
+                                input.tryGet("prevNode", "pn")
                             ) { "ID предыдущего узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
                                 input.tryGet("model", "m")?.let {
@@ -1016,7 +1013,7 @@ internal class TelegramAssistantFacade(
                             ),
                     { input ->
                         aiArticleProcessingNodesFacade.updateNode(
-                            requireNotNull(input.tryGet("nodeId", "ni")) { "ID узла обязателен" }.toLong(),
+                            requireNotNull(input["id"]) { "ID узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
                                 input.tryGet("model", "m")?.let {
                                     model = Optional.of(it)
