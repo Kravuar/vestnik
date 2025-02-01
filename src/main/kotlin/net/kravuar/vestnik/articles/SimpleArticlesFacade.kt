@@ -59,7 +59,7 @@ internal open class SimpleArticlesFacade(
                 }
             }.also {
                 LOG.info("Из источника получено ${articles.size} статей (${articles.size - unseen.size} старых)" + if (unseen.isNotEmpty()) {
-                    "новые статьи:\n" + unseen.joinToString("\n")
+                    " новые статьи:\n" + unseen.joinToString("\n")
                 } else {
                     ""
                 })
