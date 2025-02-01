@@ -21,7 +21,7 @@ class Article(
     @Column
     @Lob
     var description: String? = null,
-    @Column(nullable = false, unique = true, length = 4000)
+    @Column(nullable = false, length = 4000)
     var url: String,
     @Column(nullable = false)
     var createdAt: OffsetDateTime,
