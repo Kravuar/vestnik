@@ -18,7 +18,7 @@ internal open class SimpleArticlesFacade(
     private val sourcesFacade: SourcesFacade,
 ) : ArticlesFacade {
 
-    private fun fetchLatestNews(sourceName: String): List<Article> {
+    private fun fetchNews(sourceName: String): List<Article> {
         with(sourcesFacade.getSourceByName(sourceName)) {
             if (suspended == true) {
                 LOG.info("Источник $sourceName приостановлен, fetch не будет произведён")
@@ -27,34 +27,9 @@ internal open class SimpleArticlesFacade(
             return RssReader()
                 .read(this.url)
                 .sorted(ItemComparator.oldestPublishedItemFirst())
-                .toList()
-                .also {
-                    LOG.info("Получено новостей из источника $sourceName: ${it.size}")
-                }
-                .let { articles ->
-                    getLatestArticle(this).map { latestArticle ->
-                        // Drop all before latest
-                        val untilLatest = articles.dropWhile { it.guid.orElseThrow() != latestArticle.sourceGuid }
-                        if (untilLatest.isNotEmpty()) {
-                            // Drop latest as well
-                            untilLatest.drop(1)
-                        } else {
-                            // Latest article was not in that list, take all of them
-                            articles
-                        }
-                    }.orElse(articles)
-                }
                 .map {
-                    itemToArticle(sourcesFacade.getSourceByName(sourceName), it)
-                }.also {
-                    LOG.info(
-                        if (it.isNotEmpty()) {
-                            "Отобрано по времени новостей из источника $sourceName: ${it.size}"
-                        } else {
-                            "Новостей из источника $sourceName не отобрано"
-                        }
-                    )
-                }
+                    itemToArticle(this, it)
+                }.toList()
         }
     }
 
@@ -67,7 +42,7 @@ internal open class SimpleArticlesFacade(
 
     @Transactional
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
-        return fetchLatestNews(sourceName).mapNotNull { article ->
+        return fetchNews(sourceName).mapNotNull { article ->
             if (!articlesRepository.existsBySourceGuid(article.sourceGuid)) {
                 articlesRepository.save(article).also {
                     LOG.info("Сохранена новая статья: $article")
