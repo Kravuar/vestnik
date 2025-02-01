@@ -6,6 +6,7 @@ import dev.inmo.micro_utils.coroutines.joinFirst
 import dev.inmo.micro_utils.coroutines.launchSafelyWithoutExceptions
 import dev.inmo.micro_utils.coroutines.subscribeSafelyWithoutExceptions
 import dev.inmo.tgbotapi.bot.TelegramBot
+import dev.inmo.tgbotapi.bot.exceptions.CommonRequestException
 import dev.inmo.tgbotapi.bot.exceptions.MessageIsNotModifiedException
 import dev.inmo.tgbotapi.bot.exceptions.TooMuchRequestsException
 import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
@@ -210,6 +211,10 @@ internal class TelegramAssistantFacade(
             when (exception) {
                 is MessageIsNotModifiedException -> {
                     LOG.warn("Ошибка модификации сообщения, изменённое совпадает с текущем", exception)
+                }
+
+                is CommonRequestException -> {
+                    LOG.warn("Ошибка в запросе к Telegram", exception)
                 }
 
                 is AssistantActionException -> {
