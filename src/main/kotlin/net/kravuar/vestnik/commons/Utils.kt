@@ -7,7 +7,7 @@ fun String.escapeHtmlExcept(allowedTags: List<String> = listOf("b", "i", "a", "u
         """<\s*/?\s*${Regex.escape(tag)}.*?>"""
     }
 
-    val tagRegex = """<[^>]+?>?""".toRegex()
+    val tagRegex = """<\s*/?\s*.*?>""".toRegex()
 
     return this.replace(tagRegex) { matchResult ->
         val tag = matchResult.value
