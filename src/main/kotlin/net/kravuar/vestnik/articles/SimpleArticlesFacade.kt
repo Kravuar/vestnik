@@ -3,6 +3,7 @@ package net.kravuar.vestnik.articles
 import com.apptasticsoftware.rssreader.Item
 import com.apptasticsoftware.rssreader.RssReader
 import com.apptasticsoftware.rssreader.util.ItemComparator
+import com.google.common.util.concurrent.Striped
 import jakarta.transaction.Transactional
 import net.kravuar.vestnik.commons.Page
 import net.kravuar.vestnik.source.Source
@@ -12,11 +13,13 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import java.time.Duration
 import java.util.Optional
+import kotlin.concurrent.withLock
 
 internal open class SimpleArticlesFacade(
     private val articlesRepository: ArticlesRepository,
     private val sourcesFacade: SourcesFacade,
 ) : ArticlesFacade {
+    private val locks = Striped.lazyWeakLock(7)
 
     private fun fetchNews(sourceName: String): List<Article> {
         with(sourcesFacade.getSourceByName(sourceName)) {
@@ -42,14 +45,24 @@ internal open class SimpleArticlesFacade(
 
     @Transactional
     override fun fetchAndStoreLatestNews(sourceName: String, delta: Duration): List<Article> {
-        return fetchNews(sourceName).mapNotNull { article ->
-            if (!articlesRepository.existsBySourceGuid(article.sourceGuid)) {
-                articlesRepository.save(article).also {
-                    LOG.info("Сохранена новая статья: $article")
+        return fetchNews(sourceName).let { articles ->
+            val unseen = mutableSetOf<String>()
+            articles.mapNotNull { article ->
+                val lock = locks.get(article.sourceGuid)
+
+                lock.withLock {
+                    if (!articlesRepository.existsBySourceGuid(article.sourceGuid)) {
+                        articlesRepository.save(article).also { unseen.add(article.sourceGuid) }
+                    } else {
+                        null
+                    }
                 }
-            } else {
-                LOG.info("Статья уже существовала: $article")
-                null
+            }.also {
+                LOG.info("Из источника получено ${articles.size} статей (${articles.size - unseen.size} старых)" + if (unseen.isNotEmpty()) {
+                    "новые статьи:\n" + unseen.joinToString("\n")
+                } else {
+                    ""
+                })
             }
         }
     }

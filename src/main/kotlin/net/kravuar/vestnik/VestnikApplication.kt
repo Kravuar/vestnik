@@ -36,7 +36,7 @@ internal class VestnikDebugConfiguration {
 }
 
 suspend fun main(args: Array<String>) {
-	val context = runApplication<VestnikApplication>(*args)
-	val assistant = context.getBean(TelegramAssistantFacade::class.java)
-	assistant.start().join()
+    val context = runApplication<VestnikApplication>(*args)
+    val assistant = context.getBean(TelegramAssistantFacade::class.java)
+    assistant.start().join()
 }
