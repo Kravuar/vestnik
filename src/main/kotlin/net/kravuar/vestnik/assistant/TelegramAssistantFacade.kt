@@ -188,7 +188,6 @@ internal class TelegramAssistantFacade(
 
     override fun notifyNewArticle(article: Article) {
         val modes = processedArticlesFacade.getModes(1)
-        // TODO: RateLimiter
         runBlocking {
             bot.send(
                 chatId = adminChannel,
@@ -268,7 +267,7 @@ internal class TelegramAssistantFacade(
                 }
 
                 is TooMuchRequestsException -> {
-                    LOG.error("Слишком много запросов: $exception" )
+                    LOG.error("Слишком много запросов: $exception")
                 }
 
                 else -> {
@@ -949,7 +948,12 @@ internal class TelegramAssistantFacade(
                             ),
                     { input ->
                         aiArticleProcessingNodesFacade.insertNode(
-                            requireNotNull(input.tryGet("prevNode", "pn")) { "ID предыдущего узла обязателен" }.toLong(),
+                            requireNotNull(
+                                input.tryGet(
+                                    "prevNode",
+                                    "pn"
+                                )
+                            ) { "ID предыдущего узла обязателен" }.toLong(),
                             AIArticleProcessingNodesFacade.AIArticleProcessingNodeInput().apply {
                                 input.tryGet("model", "m")?.let {
                                     model = Optional.of(it)
@@ -1258,7 +1262,7 @@ internal class TelegramAssistantFacade(
                                             processedArticle,
                                             publishingResult
                                         ),
-                                        markup = inlineKeyboard { row {} } // TODO: clear keyboard
+                                        markup = null
                                     )
                                 } else {
                                     // Notify about cancellation
@@ -1266,7 +1270,7 @@ internal class TelegramAssistantFacade(
                                     edit(
                                         message = finalFormMessage,
                                         text = canceledPublicationMessage(),
-                                        markup = inlineKeyboard { row {} } // TODO: clear keyboard
+                                        markup = null
                                     )
                                 }
                             }
@@ -1816,6 +1820,7 @@ internal class TelegramAssistantFacade(
             val articleId: Long,
             val page: Int
         )
+
         private val ARTICLE_MODES_PAGE_REGEX = Regex("AM_\\d*_\\d*")
         private fun getArticleModesData(data: String): ArticleModesData {
             require(data.startsWith("AM_")) { "В запросе на выбор страницы режимов статьи встречен некорректный callback" }
@@ -1832,10 +1837,12 @@ internal class TelegramAssistantFacade(
             val articleId: Long,
             val mode: String
         )
+
         private val PROCESS_ARTICLE_REGEX = Regex("PA_\\d*_.*")
         private fun processArticleCallbackData(processArticleData: ProcessArticleData): String {
             return "PA_${processArticleData.articleId}_${processArticleData.mode}"
         }
+
         private fun getProcessArticleData(data: String): ProcessArticleData {
             require(data.startsWith("PA_")) { "В запросе на обработку статьи встречен некорректный callback" }
             return data.substringAfter("PA_").split("_").let {
@@ -1851,6 +1858,7 @@ internal class TelegramAssistantFacade(
         private fun selectCallbackData(id: Long): String {
             return "SE_${id}"
         }
+
         private fun getSelectData(data: String): Long {
             return data.substringAfter("_").toLong()
         }
@@ -1859,6 +1867,7 @@ internal class TelegramAssistantFacade(
         private fun deselectCallbackData(id: Long): String {
             return "DESE_${id}"
         }
+
         private fun getDeselectData(data: String): Long {
             return data.substringAfter("_").toLong()
         }

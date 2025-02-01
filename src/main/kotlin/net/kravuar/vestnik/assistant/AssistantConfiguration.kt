@@ -2,8 +2,9 @@ package net.kravuar.vestnik.assistant
 
 import dev.inmo.tgbotapi.bot.TelegramBot
 import dev.inmo.tgbotapi.bot.ktor.telegramBot
-import dev.inmo.tgbotapi.bot.settings.limiters.PowLimiter
+import dev.inmo.tgbotapi.bot.settings.limiters.CommonLimiter
 import dev.inmo.tgbotapi.utils.TelegramAPIUrlsKeeper
+import korlibs.time.millisecondsLong
 import net.kravuar.vestnik.articles.ArticlesFacade
 import net.kravuar.vestnik.channels.ChannelsFacade
 import net.kravuar.vestnik.processor.ProcessedArticlesFacade
@@ -13,6 +14,7 @@ import net.kravuar.vestnik.source.SourcesFacade
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import kotlin.time.Duration.Companion.seconds
 
 @Configuration
 internal class AssistantConfiguration {
@@ -21,7 +23,7 @@ internal class AssistantConfiguration {
     fun telegramApiBot(
         @Value("\${telegram.bot.token}") token: String,
     ): TelegramBot = telegramBot(TelegramAPIUrlsKeeper(token)) {
-        requestsLimiter = PowLimiter()
+        requestsLimiter = CommonLimiter(regenTime = 20.seconds.millisecondsLong)
     }
 
     @Bean
