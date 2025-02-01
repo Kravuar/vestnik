@@ -332,7 +332,7 @@ internal class TelegramAssistantFacade(
                         } catch (throwable: Throwable) {
                             throw AssistantServiceException(
                                 assistantMessage = articleMessage,
-                                message = "Ошибка обработки статьи: ${throwable.message}",
+                                message = "Ошибка обработки статьи ${article.url}: ${throwable.message}",
                                 cause = throwable
                             )
                         }
@@ -545,7 +545,7 @@ internal class TelegramAssistantFacade(
                         mapOf(
                             "\uD83C\uDD94 Id" to it.id,
                             "\uD83C\uDF10 Шаблон URL" to it.urlPattern,
-                            "\uD83D\uDCC4 XPath" to it.contentXPath,
+                            "\uD83D\uDCC4 XPath" to it.contentXPath.escapeHtmlExcept(),
                         )
                     })
 

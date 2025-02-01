@@ -11,7 +11,7 @@ abstract class AbstractScrapper : Scrapper {
             val elements = document.selectXpath(xpath)
 
             if (elements.isEmpty()) {
-                throw IllegalArgumentException("Поиск контента не вернул результата на странице $url, путь $xpath")
+                throw IllegalArgumentException("Поиск контента не вернул результата на странице $url, путь $xpath, preview: ${document.text().take(500)}")
             }
 
             elements.flatMap { element -> IRRELEVANT_ELEMENTS.map { element.getElementsByTag(it) } }
