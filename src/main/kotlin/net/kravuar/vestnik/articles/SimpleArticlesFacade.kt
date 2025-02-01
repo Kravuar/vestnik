@@ -102,7 +102,6 @@ internal open class SimpleArticlesFacade(
                 source = source,
                 title = item.title.orElseThrow(),
                 sourceGuid = item.guid.orElseThrow(),
-                description = item.description.orElse(null),
                 url = item.link.orElseThrow(),
                 createdAt = item.pubDateZonedDateTime.orElseThrow().toOffsetDateTime()
             )

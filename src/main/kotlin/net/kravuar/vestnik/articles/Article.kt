@@ -18,9 +18,6 @@ class Article(
     var sourceGuid: String,
     @Column(nullable = false, length = 4000)
     var title: String,
-    @Column
-    @Lob
-    var description: String? = null,
     @Column(nullable = false, length = 4000)
     var url: String,
     @Column(nullable = false)
