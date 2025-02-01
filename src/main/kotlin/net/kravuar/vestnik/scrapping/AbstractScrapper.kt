@@ -8,14 +8,18 @@ abstract class AbstractScrapper : Scrapper {
 
     final override fun scrap(url: String, xpath: String): String {
         return scrapContent(url).let { document ->
-            val element = document.selectXpath(xpath).first()
-                ?: throw IllegalArgumentException("Не найден элемент на странице $url, путь $xpath")
+            val elements = document.selectXpath(xpath)
 
-            IRRELEVANT_ELEMENTS.forEach {
-                element.getElementsByTag(it).remove()
+            if (elements.isEmpty()) {
+                throw IllegalArgumentException("Поиск контента не вернул результата на странице $url, путь $xpath")
             }
 
-            element.text()
+            elements.flatMap { element -> IRRELEVANT_ELEMENTS.map { element.getElementsByTag(it) } }
+                .forEach {
+                    it.remove()
+                }
+
+            elements.text()
         }
     }
 }
